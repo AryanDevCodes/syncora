@@ -1,0 +1,92 @@
+HELP.md
+target/
+.mvn/wrapper/maven-wrapper.jar
+!**/src/main/**/target/
+!**/src/test/**/target/
+
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+.sts4-cache
+
+.idea
+*.iws
+*.iml
+*.ipr
+
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+build/
+
+!**/src/main/**/build/
+!**/src/test/**/build/
+
+.vscode/
+
+# Documentation and Report Files
+*.md
+!README.md
+*.pdf
+*.docx
+*.doc
+*.pptx
+*.ppt
+*.mmd
+*.sql
+*.csv
+*.xlsx
+*.txt
+
+# Logs
+logs/
+*.log
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+application-local.properties
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Frontend dependencies and build
+syncora_frontend/node_modules/
+syncora_frontend/dist/
+syncora_frontend/build/
+syncora_frontend/.vite/
+syncora_frontend/coverage/
+syncora_frontend/bun.lockb
+
+# Backend generated files
+*.class
+*.jar
+*.war
+*.ear
+
+# Database
+*.db
+*.sql.backup
+
+# Temporary files
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+
+# Scripts output
+scripts/__pycache__/
+scripts/*.pyc
+
+# Zego token service
+zego-token-service/node_modules/
+zego-token-service/.env

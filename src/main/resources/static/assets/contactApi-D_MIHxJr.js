@@ -1,0 +1,1 @@
+import{n as a}from"./index-C6EvfBZN.js";const s="/contacts",e=async()=>(await a.get(s)).data.data,o=async t=>(await a.get(`${s}/${t}`)).data.data,c=async t=>(await a.post(s,t)).data.data,r=async(t,n)=>(await a.put(`${s}/${t}`,n)).data.data,p=async t=>{await a.delete(`${s}/${t}`)},u={getAllContacts:e,getContactById:o,createContact:c,updateContact:r,deleteContact:p};export{u as c};
