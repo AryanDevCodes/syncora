@@ -59,48 +59,18 @@ const LoadingFallback = () => (
   </div>
 );
 
-// Simulated data fetch
-const fetchDemoData = async () => {
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      resolve({ message: "Demo data fetched successfully!" });
-    }, 1000);
-  });
-};
 
-// Context for demo data
-const DataContext = createContext(null);
 
-// Suspense wrapper with data fetch
 const DelayedSuspenseWithFetch = ({ children }) => {
   const [isLoading, setIsLoading] = useState(true);
-  const [data, setData] = useContext(DataContext);
 
   useEffect(() => {
-    if (!data) {
-      console.log("No data found in context. Fetching data...");
-      startTransition(() => {
-        const fetchData = async () => {
-          try {
-            const result = await fetchDemoData();
-            if (!result) {
-              console.warn("Fetched data is null or undefined.");
-            } else {
-              console.log("Fetched data:", result);
-            }
-            setData(result);
-            setIsLoading(false);
-          } catch (error) {
-            console.error("Error fetching data:", error);
-          }
-        };
-        fetchData();
-      });
-    } else {
-      console.log("Data already exists in context:", data);
+    const timer = setTimeout(() => {
       setIsLoading(false);
-    }
-  }, [data, setData]);
+    }, 500);
+    
+    return () => clearTimeout(timer);
+  }, []);
 
   return isLoading ? <LoadingFallback /> : children;
 };
@@ -110,7 +80,6 @@ const ErrorBoundary = ({ children }) => (
 );
 
 const App = () => (
-  <DataContext.Provider value={useState(null)}>
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <AuthProvider>
@@ -185,7 +154,6 @@ const App = () => (
         </AuthProvider>
       </TooltipProvider>
     </QueryClientProvider>
-  </DataContext.Provider>
 );
 
 export default App;

@@ -33,8 +33,8 @@ public class OAuth2AuthenticationSuccessHandler extends SimpleUrlAuthenticationS
             return;
         }
 
-    CustomOAuth2User oauth2User = (CustomOAuth2User) authentication.getPrincipal();
-    User user = oauth2User.getUser();
+        CustomOAuth2User oauth2User = (CustomOAuth2User) authentication.getPrincipal();
+        User user = oauth2User.getUser();
 
     log.info("OAuth2AuthenticationSuccessHandler: user={}, provider={}, providerId={}", user.getEmail(), user.getProvider(), user.getProviderId());
 
@@ -46,12 +46,18 @@ public class OAuth2AuthenticationSuccessHandler extends SimpleUrlAuthenticationS
 
     // Build redirect URL with tokens
     String redirectUrl = Objects.requireNonNull(frontendRedirectUrl, "frontendRedirectUrl must not be null");
-    String targetUrl = UriComponentsBuilder.fromUriString(redirectUrl)
+    UriComponentsBuilder uriBuilder = UriComponentsBuilder.fromUriString(redirectUrl)
         .queryParam("accessToken", accessToken)
         .queryParam("refreshToken", refreshToken)
         .queryParam("userId", user.getId())
-        .queryParam("email", user.getEmail())
-        .build().toUriString();
+        .queryParam("email", user.getEmail());
+    
+    // Add avatarUrl if available
+    if (user.getAvatarUrl() != null && !user.getAvatarUrl().isEmpty()) {
+        uriBuilder.queryParam("avatarUrl", user.getAvatarUrl());
+    }
+    
+    String targetUrl = uriBuilder.build().toUriString();
 
     log.info("OAuth2 authentication successful for user: {}. Redirecting to: {}", user.getEmail(), targetUrl);
 

@@ -197,21 +197,21 @@ const EmailPage = () => {
   };
 
   return (
-    <div className="flex h-screen bg-gray-50 dark:bg-gray-900">
+    <div className="flex h-screen bg-gradient-to-b from-slate-50 via-white to-white">
       {/* Sidebar */}
-      <div className="w-64 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col">
-        <div className="p-4">
+      <div className="w-64 bg-white border-r border-slate-200 flex flex-col shadow-sm">
+        <div className="p-4 border-b border-slate-100">
           <Button 
             onClick={() => setShowCompose(true)}
-            className="w-full bg-blue-600 hover:bg-blue-700"
+            className="w-full bg-indigo-600 hover:bg-indigo-700 shadow-sm"
           >
             <Plus className="w-4 h-4 mr-2" />
             Compose
           </Button>
         </div>
 
-        <ScrollArea className="flex-1">
-          <div className="px-2">
+        <ScrollArea className="flex-1 py-2">
+          <div className="px-3 space-y-1">
             {folders.map((folder) => {
               const Icon = folder.icon;
               const unreadCount = getUnreadCount(folder.id);
@@ -223,16 +223,16 @@ const EmailPage = () => {
                     setSelectedEmail(null);
                     setSelectedEmails(new Set());
                   }}
-                  className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg mb-1 transition ${
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all ${
                     selectedFolder === folder.id
-                      ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400'
-                      : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300'
+                      ? 'bg-indigo-50 text-indigo-700 shadow-sm border border-indigo-100'
+                      : 'hover:bg-slate-50 text-slate-700'
                   }`}
                 >
-                  <Icon className={`w-5 h-5 ${folder.color}`} />
-                  <span className="flex-1 text-left font-medium">{folder.label}</span>
+                  <Icon className={`w-5 h-5 ${selectedFolder === folder.id ? 'text-indigo-600' : folder.color}`} />
+                  <span className="flex-1 text-left font-medium text-sm">{folder.label}</span>
                   {unreadCount > 0 && (
-                    <Badge variant="secondary" className="ml-auto">
+                    <Badge className="ml-auto bg-indigo-100 text-indigo-700 hover:bg-indigo-100">
                       {unreadCount}
                     </Badge>
                   )}
@@ -242,26 +242,26 @@ const EmailPage = () => {
           </div>
         </ScrollArea>
 
-        <div className="p-4 border-t border-gray-200 dark:border-gray-700">
-          <div className="text-xs text-gray-500 dark:text-gray-400">
+        <div className="p-4 border-t border-slate-100 bg-slate-50">
+          <div className="text-xs text-slate-600 font-medium truncate">
             {user?.email}
           </div>
         </div>
       </div>
 
       {/* Email List */}
-      <div className="flex-1 flex flex-col">
+      <div className="flex-1 flex flex-col bg-white">
         {/* Toolbar */}
-        <div className="h-16 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 flex items-center gap-3 px-4">
+        <div className="h-16 bg-white border-b border-slate-200 flex items-center gap-3 px-6 shadow-sm">
           <div className="flex items-center gap-2">
             <button
               onClick={handleSelectAll}
-              className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
+              className="p-2 hover:bg-slate-100 rounded-lg transition"
             >
               {selectedEmails.size === emails.length && emails.length > 0 ? (
-                <CheckSquare className="w-5 h-5" />
+                <CheckSquare className="w-5 h-5 text-indigo-600" />
               ) : (
-                <Square className="w-5 h-5" />
+                <Square className="w-5 h-5 text-slate-400" />
               )}
             </button>
 
@@ -271,14 +271,16 @@ const EmailPage = () => {
                   variant="ghost"
                   size="sm"
                   onClick={() => handleBulkAction('archive')}
+                  className="text-slate-700 hover:text-slate-900 hover:bg-slate-100"
                 >
                   <Archive className="w-4 h-4 mr-2" />
                   Archive
                 </Button>
                 <Button
-                  variant="ghost"
+                  variant="outline"
                   size="sm"
                   onClick={() => handleBulkAction('trash')}
+                  className="bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100"
                 >
                   <Trash2 className="w-4 h-4 mr-2" />
                   Delete
@@ -287,6 +289,7 @@ const EmailPage = () => {
                   variant="ghost"
                   size="sm"
                   onClick={() => handleBulkAction('read')}
+                  className="text-slate-700 hover:text-slate-900 hover:bg-slate-100"
                 >
                   Mark Read
                 </Button>
@@ -297,12 +300,12 @@ const EmailPage = () => {
           <div className="flex-1" />
 
           <div className="relative w-96">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
             <Input
               placeholder="Search emails..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10"
+              className="pl-10 border-slate-200 focus:border-indigo-300 focus:ring-indigo-200"
             />
           </div>
 
@@ -311,72 +314,74 @@ const EmailPage = () => {
             size="icon"
             onClick={fetchEmails}
             disabled={loading}
+            className="hover:bg-slate-100"
           >
-            <RefreshCw className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`w-5 h-5 text-slate-600 ${loading ? 'animate-spin' : ''}`} />
           </Button>
         </div>
 
         {/* Email List Content */}
-        <ScrollArea className="flex-1">
+        <ScrollArea className="flex-1 bg-slate-50">
           {loading ? (
             <div className="flex items-center justify-center h-64">
-              <RefreshCw className="w-8 h-8 animate-spin text-gray-400" />
+              <RefreshCw className="w-8 h-8 animate-spin text-indigo-400" />
             </div>
           ) : emails.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-64 text-gray-500">
-              <Mail className="w-16 h-16 mb-4 opacity-50" />
-              <p className="text-lg font-medium">No emails in {selectedFolder}</p>
+            <div className="flex flex-col items-center justify-center h-64 text-slate-500">
+              <Mail className="w-16 h-16 mb-4 opacity-30" />
+              <p className="text-lg font-semibold text-slate-700">No emails in {selectedFolder}</p>
+              <p className="text-sm text-slate-500 mt-1">Your {selectedFolder} folder is empty</p>
             </div>
           ) : (
-            <div className="divide-y divide-gray-200 dark:divide-gray-700">
+            <div className="">
               {emails.map((email) => (
                 <div
                   key={email.id}
                   onClick={() => handleEmailClick(email)}
-                  className={`flex items-center gap-4 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer transition ${
-                    !email.isRead ? 'bg-blue-50/30 dark:bg-blue-900/10' : ''
-                  } ${selectedEmail?.id === email.id ? 'bg-gray-100 dark:bg-gray-700' : ''}`}
+                  className={`flex items-center gap-4 px-6 py-4 hover:bg-white cursor-pointer transition-all border-b border-slate-100 ${
+                    !email.isRead ? 'bg-indigo-50/30' : 'bg-white'
+                  } ${selectedEmail?.id === email.id ? 'bg-indigo-50 border-l-4 border-l-indigo-500' : ''}`}
                 >
                   <button
                     onClick={(e) => handleSelectEmail(email.id, e)}
-                    className="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded"
+                    className="p-1 hover:bg-slate-100 rounded transition"
                   >
                     {selectedEmails.has(email.id) ? (
-                      <CheckSquare className="w-5 h-5 text-blue-600" />
+                      <CheckSquare className="w-5 h-5 text-indigo-600" />
                     ) : (
-                      <Square className="w-5 h-5" />
+                      <Square className="w-5 h-5 text-slate-400" />
                     )}
                   </button>
 
                   <button
                     onClick={(e) => handleToggleStar(email, e)}
-                    className="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded"
+                    className="p-1 hover:bg-slate-100 rounded transition"
                   >
-                    <Star className={`w-5 h-5 ${email.isStarred ? 'fill-yellow-400 text-yellow-400' : ''}`} />
+                    <Star className={`w-5 h-5 ${email.isStarred ? 'fill-amber-400 text-amber-400' : 'text-slate-300 hover:text-slate-400'}`} />
                   </button>
 
-                  <Avatar className="w-8 h-8">
-                    <AvatarFallback>{email.fromName?.charAt(0) || 'U'}</AvatarFallback>
+                  <Avatar className="w-9 h-9 border border-slate-200">
+                    <AvatarFallback className="bg-indigo-100 text-indigo-700 font-semibold">{email.fromName?.charAt(0) || 'U'}</AvatarFallback>
                   </Avatar>
 
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
-                      <span className={`font-medium truncate ${!email.isRead ? 'font-bold' : ''}`}>
+                      <span className={`truncate ${!email.isRead ? 'font-semibold text-slate-900' : 'font-medium text-slate-700'}`}>
                         {email.fromName || email.from}
                       </span>
                       {email.attachments && email.attachments.length > 0 && (
-                        <Paperclip className="w-4 h-4 text-gray-400" />
+                        <Paperclip className="w-4 h-4 text-slate-400" />
                       )}
                     </div>
-                    <p className={`text-sm truncate ${!email.isRead ? 'font-semibold text-gray-900 dark:text-white' : 'text-gray-600 dark:text-gray-400'}`}>
+                    <p className={`text-sm truncate ${!email.isRead ? 'font-semibold text-slate-900' : 'text-slate-600'}`}>
                       {email.subject || '(No subject)'}
                     </p>
-                    <p className="text-xs text-gray-500 dark:text-gray-500 truncate">
+                    <p className="text-xs text-slate-500 truncate mt-0.5">
                       {email.body?.replace(/<[^>]*>/g, '').substring(0, 100)}
                     </p>
                   </div>
 
-                  <div className="text-xs text-gray-500 dark:text-gray-400">
+                  <div className="text-xs text-slate-500 font-medium">
                     {formatDate(email.sentAt)}
                   </div>
                 </div>

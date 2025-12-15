@@ -3,6 +3,12 @@ import axiosInstance from '@/lib/axios';
 const BASE_URL = '/users';
 
 export interface UserDto {
+  theme: string;
+  language: string;
+  profileVisibility: string;
+  onlineStatus: boolean;
+  readReceipts: boolean;
+  twoFactorAuth: boolean;
   userEmail: string;
   role: string;
   subscriptionPlan: string;

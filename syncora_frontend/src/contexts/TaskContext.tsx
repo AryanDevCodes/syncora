@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, ReactNode, useEffect } from 'react';
 import { taskApi, TaskDTO, CreateTaskRequest, TaskStatus, TaskPriority } from '@/api/taskApi';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/contexts/AuthContext';
 
 export interface Task {
   id: string;
@@ -66,6 +67,7 @@ export const TaskProvider = ({ children }: { children: ReactNode }) => {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
+  const { isAuthenticated } = useAuth();
 
   const fetchTasks = async () => {
     try {
@@ -85,8 +87,11 @@ export const TaskProvider = ({ children }: { children: ReactNode }) => {
   };
 
   useEffect(() => {
-    fetchTasks();
-  }, []);
+    // Only fetch tasks if user is authenticated
+    if (isAuthenticated) {
+      fetchTasks();
+    }
+  }, [isAuthenticated]);
 
   const moveTask = async (taskId: string, newStatus: Task['status']) => {
     const statusMap: Record<Task['status'], TaskStatus> = {

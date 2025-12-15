@@ -1,0 +1,47 @@
+name: Scale ECS Service (pause/resume)
+
+on:
+  workflow_dispatch:
+    inputs:
+      desired_count:
+        description: "Desired task count (0 to pause, 1+ to resume)"
+        required: true
+        default: "0"
+      cluster:
+        description: "ECS cluster name"
+        required: true
+        default: "syncora-cluster"
+      service:
+        description: "ECS service name"
+        required: true
+        default: "syncora-backend"
+
+env:
+  AWS_REGION: us-east-1  # change if needed
+
+jobs:
+  scale:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Configure AWS Credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::123456789012:role/github-actions-ecs-scale  # replace with your role ARN
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Scale service
+        run: |
+          aws ecs update-service \
+            --cluster "${{ github.event.inputs.cluster }}" \
+            --service "${{ github.event.inputs.service }}" \
+            --desired-count ${{ github.event.inputs.desired_count }}
+
+      - name: Show service status
+        run: |
+          aws ecs describe-services \
+            --cluster "${{ github.event.inputs.cluster }}" \
+            --services "${{ github.event.inputs.service }}" \
+            --query 'services[0].{desired:desiredCount,running:runningCount,status:status}'

@@ -1,0 +1,56 @@
+name: Deploy Backend to AWS App Runner (ap-south-1)
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'src/**'
+      - 'pom.xml'
+      - 'Dockerfile'
+      - '.github/workflows/backend-deploy.yml'
+  workflow_dispatch:
+
+env:
+  AWS_REGION: ap-south-1                # change if needed
+  ECR_REPOSITORY: syncora-backend
+  IMAGE_TAG: latest
+  APP_RUNNER_SERVICE_ARN: arn:aws:apprunner:ap-south-1:705166993774:service/syncora-backend/REPLACE_WITH_SERVICE_ID
+
+jobs:
+  deploy-backend:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::705166993774:role/github-actions-apprunner
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and Push Docker image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        run: |
+          docker build -t $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }} .
+          docker push $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}
+
+      - name: Deploy to App Runner
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        run: |
+          aws apprunner update-service \
+            --service-arn $APP_RUNNER_SERVICE_ARN \
+            --source-configuration '{"ImageRepository":{"ImageIdentifier":"'$ECR_REGISTRY'/${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}","ImageRepositoryType":"ECR"},"AutoDeploymentsEnabled":true}'
+
+      - name: Output service URL
+        run: |
+          aws apprunner describe-service --service-arn $APP_RUNNER_SERVICE_ARN --query 'Service.ServiceUrl' --output text

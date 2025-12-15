@@ -82,10 +82,6 @@ export class ZegoCloudService {
       serverSecret,
       wsUrl
     };
-
-    console.log('[ZegoCloudService] Initialized successfully');
-    console.log('[ZegoCloudService] App ID:', appID);
-    console.log('[ZegoCloudService] Server Secret length:', serverSecret.length);
   }
 
   /**

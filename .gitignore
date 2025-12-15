@@ -16,6 +16,7 @@ target/
 *.iws
 *.iml
 *.ipr
+*.application.properties
 
 /nbproject/private/
 /nbbuild/
@@ -48,7 +49,7 @@ logs/
 *.log
 
 # Environment variables
-.env
+# .env
 .env.local
 .env.*.local
 application-local.properties

@@ -10,8 +10,26 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { Link } from 'react-router-dom';
 
-const BACKEND_URL = import.meta.env.VITE_API_URL || 'http://localhost:8081';
-const OAUTH_BASE_URL = import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:8081';
+declare global {
+  interface Window {
+    OAUTH_DEBUG?: {
+      BACKEND_URL: string;
+      OAUTH_BASE_URL: string;
+    };
+  }
+}
+
+const BACKEND_URL = 'http://localhost:8081';
+const OAUTH_BASE_URL = 'http://localhost:8081';
+
+// Debug logging - use window to ensure it's visible
+if (typeof window !== 'undefined') {
+  window.OAUTH_DEBUG = {
+    BACKEND_URL,
+    OAUTH_BASE_URL,
+  };
+  console.log('🔧 AuthPage Configuration:', window.OAUTH_DEBUG);
+}
 
 const AuthPage = () => {
   const navigate = useNavigate();
@@ -141,7 +159,9 @@ const AuthPage = () => {
 
   const handleOAuthLogin = (provider: 'google' | 'github') => {
     // Use window.location.href for OAuth redirect
-    window.location.href = `${OAUTH_BASE_URL}/oauth2/authorization/${provider}`;
+    const oauthUrl = `${OAUTH_BASE_URL}/oauth2/authorization/${provider}`;
+    console.log(`🔐 Redirecting to ${provider} OAuth:`, oauthUrl);
+    window.location.href = oauthUrl;
   };
 
   const handleDemoLogin = () => {

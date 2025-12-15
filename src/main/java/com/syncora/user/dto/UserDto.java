@@ -7,6 +7,7 @@ public class UserDto {
     private String  userId, userEmail;
     private String firstName,lastName;
     private String avatarUrl;
+    private String bio;
     private String role;
     private String subscriptionPlan;
     private Long storageUsedBytes;

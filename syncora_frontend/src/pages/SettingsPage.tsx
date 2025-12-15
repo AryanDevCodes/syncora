@@ -1,28 +1,32 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { 
   User, 
   Bell, 
   Shield, 
   Palette, 
-  Globe, 
-  Zap, 
-  Camera, 
-  Save, 
-  Settings,
-  Trash2,
-  Download,
   Mail,
   Smartphone,
   MessageSquare,
   CheckSquare,
+  Save,
+  Settings,
+  Trash2,
+  Download,
+  Camera,
   Eye,
-  EyeOff,
   Key,
   AlertTriangle,
   HardDrive,
   Crown,
-  Star,
-  Gift
+  Gift,
+  LogOut,
+  ChevronRight,
+  Globe,
+  Sun,
+  Moon,
+  CheckCircle,
+  XCircle,
+  Loader2
 } from 'lucide-react';
 
 // Components
@@ -31,7 +35,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
@@ -41,10 +44,13 @@ import {
   DialogHeader, 
   DialogTitle, 
   DialogDescription, 
-  DialogFooter 
+  DialogFooter,
+  DialogClose
 } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
+import { Textarea } from '@/components/ui/textarea';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 // Hooks & Context
 import { useAuth } from '@/contexts/AuthContext';
@@ -55,7 +61,6 @@ import { generateUserExportPdf } from '@/utils/exportPdf';
 import { notesApi } from '@/api/notesApi';
 import { taskApi } from '@/api/taskApi';
 import { contactApi } from '@/api/contactApi';
-import { motion } from 'framer-motion';
 
 // Types
 interface UserSettings {
@@ -86,6 +91,7 @@ interface UserSettings {
   profileVisibility: string;
   onlineStatus: boolean;
   readReceipts: boolean;
+  twoFactorAuth: boolean;
 }
 
 const SettingsPage = () => {
@@ -94,11 +100,14 @@ const SettingsPage = () => {
   const { toast } = useToast();
   
   // State
-  const [isEditing, setIsEditing] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [showAvatarDialog, setShowAvatarDialog] = useState(false);
   const [avatarInput, setAvatarInput] = useState('');
   const [lastUpdate, setLastUpdate] = useState(Date.now());
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [activeTab, setActiveTab] = useState('profile');
+  const [initialSettings, setInitialSettings] = useState<UserSettings | null>(null);
 
   // User settings state
   const [userSettings, setUserSettings] = useState<UserSettings>({
@@ -122,7 +131,14 @@ const SettingsPage = () => {
     profileVisibility: 'everyone',
     onlineStatus: true,
     readReceipts: true,
+    twoFactorAuth: false,
   });
+
+  // Check if settings have changed
+  const hasChanges = useCallback(() => {
+    if (!initialSettings) return false;
+    return JSON.stringify(userSettings) !== JSON.stringify(initialSettings);
+  }, [userSettings, initialSettings]);
 
   // Fetch user data
   useEffect(() => {
@@ -130,9 +146,8 @@ const SettingsPage = () => {
       try {
         setIsLoading(true);
         const userData = await userApi.getCurrentUser();
-        
-        setUserSettings(prev => ({
-          ...prev,
+
+        const settings: UserSettings = {
           id: userData.id ?? null,
           email: userData.userEmail ?? userData.email ?? '',
           firstName: userData.firstName ?? '',
@@ -148,7 +163,16 @@ const SettingsPage = () => {
           pushNotifications: userData.pushNotifications ?? true,
           chatNotifications: userData.chatNotifications ?? true,
           taskNotifications: userData.taskNotifications ?? true,
-        }));
+          theme: userData.theme ?? 'system',
+          language: userData.language ?? 'en',
+          profileVisibility: userData.profileVisibility ?? 'everyone',
+          onlineStatus: userData.onlineStatus ?? true,
+          readReceipts: userData.readReceipts ?? true,
+          twoFactorAuth: userData.twoFactorAuth ?? false,
+        };
+        
+        setUserSettings(settings);
+        setInitialSettings(settings);
       } catch (error) {
         console.error('Failed to fetch user data:', error);
         toast({
@@ -174,32 +198,15 @@ const SettingsPage = () => {
     }
   }, [subscription]);
 
-  // Listen for subscription updates
-  useEffect(() => {
-    const handleSubscriptionUpdate = () => {
-      if (subscription?.plan?.name) {
-        setUserSettings(prev => ({
-          ...prev,
-          subscriptionPlan: subscription.plan.name
-        }));
-      }
-    };
-
-    window.addEventListener('subscription-updated', handleSubscriptionUpdate);
-    return () => {
-      window.removeEventListener('subscription-updated', handleSubscriptionUpdate);
-    };
-  }, [subscription]);
-
   // Update single setting
   const updateSetting = useCallback((key: keyof UserSettings, value: any) => {
     setUserSettings(prev => ({ ...prev, [key]: value }));
   }, []);
 
-  // Save profile settings
-  const handleSaveProfile = async () => {
+  // Save all settings
+  const handleSaveSettings = async () => {
     try {
-      setIsLoading(true);
+      setIsSaving(true);
       await userApi.updateCurrentUser({
         firstName: userSettings.firstName,
         lastName: userSettings.lastName,
@@ -208,33 +215,39 @@ const SettingsPage = () => {
         pushNotifications: userSettings.pushNotifications,
         chatNotifications: userSettings.chatNotifications,
         taskNotifications: userSettings.taskNotifications,
+        theme: userSettings.theme,
+        language: userSettings.language,
+        profileVisibility: userSettings.profileVisibility,
+        onlineStatus: userSettings.onlineStatus,
+        readReceipts: userSettings.readReceipts,
+        twoFactorAuth: userSettings.twoFactorAuth,
       });
       
       setLastUpdate(Date.now());
-      setIsEditing(false);
+      setInitialSettings(userSettings);
       
       toast({
-        title: 'Profile Updated',
-        description: 'Your profile settings have been saved successfully',
+        title: 'Settings Saved',
+        description: 'Your settings have been updated successfully',
       });
     } catch (error) {
-      console.error('Failed to update profile:', error);
+      console.error('Failed to update settings:', error);
       toast({
         title: 'Error',
-        description: 'Failed to update profile. Please try again later.',
+        description: 'Failed to update settings',
         variant: 'destructive',
       });
     } finally {
-      setIsLoading(false);
+      setIsSaving(false);
     }
   };
 
   // Handle avatar update
-  const handleAvatarUpdate = async (avatarData: string) => {
-    if (avatarData.length > 1000) {
+  const handleAvatarUpdate = async () => {
+    if (!avatarInput.trim()) {
       toast({
         title: 'Error',
-        description: 'Avatar URL is too long. Maximum length is 1000 characters.',
+        description: 'Please enter an image URL or upload a file',
         variant: 'destructive',
       });
       return;
@@ -242,19 +255,20 @@ const SettingsPage = () => {
 
     try {
       setIsLoading(true);
-      await userApi.updateCurrentUser({ avatarUrl: avatarData });
-      updateSetting('avatarUrl', avatarData);
+      await userApi.updateCurrentUser({ avatarUrl: avatarInput });
+
+      setUserSettings(prev => ({ ...prev, avatarUrl: avatarInput }));
       setLastUpdate(Date.now());
       
       toast({ 
-        title: 'Avatar Updated', 
-        description: 'Your profile picture was updated successfully.' 
+        title: 'Success', 
+        description: 'Profile picture updated successfully.' 
       });
     } catch (error) {
       console.error('Failed to update avatar:', error);
       toast({ 
         title: 'Error', 
-        description: 'Failed to update avatar.', 
+        description: 'Failed to update profile picture.', 
         variant: 'destructive' 
       });
     } finally {
@@ -266,102 +280,143 @@ const SettingsPage = () => {
 
   // Handle file upload
   const handleFileUpload = (file: File) => {
+    if (!file.type.startsWith('image/')) {
+      toast({
+        title: 'Invalid File',
+        description: 'Please upload an image file',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (file.size > 2 * 1024 * 1024) {
+      toast({
+        title: 'File Too Large',
+        description: 'Image must be less than 2MB',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     const reader = new FileReader();
     reader.onload = async (event) => {
       const base64 = event.target?.result as string;
-      await handleAvatarUpdate(base64);
+      setAvatarInput(base64);
+    };
+    reader.onerror = () => {
+      toast({
+        title: 'Upload Failed',
+        description: 'Failed to read the image file',
+        variant: 'destructive',
+      });
     };
     reader.readAsDataURL(file);
   };
 
-  // Save appearance settings
-  const handleSaveAppearance = async () => {
-    // TODO: Integrate with backend API
-    toast({
-      title: 'Appearance Updated',
-      description: 'Your appearance settings have been saved',
-    });
-  };
-
-  // Save privacy settings
-  const handleSavePrivacy = async () => {
-    // TODO: Integrate with backend API
-    toast({
-      title: 'Privacy Updated',
-      description: 'Your privacy settings have been saved',
-    });
-  };
-
   // Format storage usage
-  const formatStorageUsage = (bytes: number | null): { used: string; percent: number } => {
-    if (!bytes) return { used: '0 B', percent: 0 };
+  const formatStorageUsage = (bytes: number | null): { used: string; percent: number; total: string } => {
+    if (!bytes) return { used: '0 B', percent: 0, total: '0 B' };
     
     const sizes = ['B', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(1024));
     const used = Math.round(bytes / Math.pow(1024, i) * 100) / 100 + ' ' + sizes[i];
     
-    // Calculate percentage (assuming 1GB storage limit for free tier)
-    const totalStorage = subscription?.plan?.name === 'PROFESSIONAL' ? 100 * 1024 * 1024 * 1024 : 5 * 1024 * 1024 * 1024; // 100GB for pro, 5GB for free
-    const percent = Math.min((bytes / totalStorage) * 100, 100);
+    const totalBytes = subscription?.plan?.name === 'PROFESSIONAL' ? 100 * 1024 * 1024 * 1024 : 5 * 1024 * 1024 * 1024;
+    const percent = Math.min((bytes / totalBytes) * 100, 100);
+    const total = (totalBytes / Math.pow(1024, 3)).toFixed(0) + ' GB';
     
-    return { used, percent };
+    return { used, percent, total };
   };
-
-  // Danger zone actions
-  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
 
   const handleExportData = async () => {
     try {
       setIsLoading(true);
-      // Fetch export JSON (from blob), then render premium PDF
-      const blob = await userApi.exportCurrentUser();
-      const text = await blob.text();
-      const json = JSON.parse(text);
+      
+      // Fetch all data
+      const [userData, notes, tasks, contacts] = await Promise.all([
+        userApi.getCurrentUser().catch(() => ({})),
+        notesApi.getAllNotes().catch(() => []),
+        taskApi.getAllTasks().catch(() => []),
+        contactApi.getAllContacts().catch(() => []),
+      ]);
 
-      // If backend export lacks data arrays, fetch them on the client
-      const needNotes = !Array.isArray(json.notes) || json.notes.length === 0;
-      const needTasks = !Array.isArray(json.tasks) || json.tasks.length === 0;
-      const needContacts = !Array.isArray(json.contacts) || json.contacts.length === 0;
+      const exportData = {
+        user: userData,
+        notes,
+        tasks,
+        contacts,
+        exportedAt: new Date().toISOString(),
+      };
 
-      if (needNotes || needTasks || needContacts) {
-        const [notes, tasks, contacts] = await Promise.all([
-          needNotes ? notesApi.getAllNotes().catch(() => []) : Promise.resolve(json.notes),
-          needTasks ? taskApi.getAllTasks().catch(() => []) : Promise.resolve(json.tasks),
-          needContacts ? contactApi.getAllContacts().catch(() => []) : Promise.resolve(json.contacts),
-        ]);
-
-        if (needNotes) json.notes = notes;
-        if (needTasks) json.tasks = tasks;
-        if (needContacts) json.contacts = contacts;
-      }
-
-      const doc = await generateUserExportPdf(json, {
-        title: 'Syncora • Personal Data Export',
+      // Generate PDF
+      const doc = await generateUserExportPdf(exportData, {
+        title: 'Syncora • Data Export',
         brandName: 'SYNCORA',
-        brandColor: '#7C3AED', // violet-600 for premium feel
-        accentColor: '#0F172A', // slate-900
+        brandColor: '#2563eb',
+        accentColor: '#1e293b',
       });
-      const ts = new Date().toISOString().replace(/[:.]/g, '-');
-      doc.save(`syncora-export-${ts}.pdf`);
-      toast({ title: 'Export Complete', description: 'Your export PDF has been downloaded.' });
+      
+      const timestamp = new Date().toISOString().slice(0, 19).replace(/[:]/g, '-');
+      doc.save(`syncora-export-${timestamp}.pdf`);
+      
+      toast({ 
+        title: 'Export Complete', 
+        description: 'Your data has been exported successfully.',
+      });
     } catch (error) {
       console.error('Export failed', error);
-      toast({ title: 'Export Failed', description: 'Could not generate PDF export.', variant: 'destructive' });
+      toast({ 
+        title: 'Export Failed', 
+        description: 'Could not export your data.', 
+        variant: 'destructive' 
+      });
     } finally {
       setIsLoading(false);
     }
   };
 
   const handleDeleteAccount = async () => {
-    setShowDeleteDialog(true);
+    try {
+      setIsLoading(true);
+      await userApi.deleteCurrentUser();
+      
+      toast({ 
+        title: 'Account Deleted', 
+        description: 'Your account has been deleted successfully.' 
+      });
+      
+      await logout();
+      window.location.href = '/';
+    } catch (error) {
+      console.error('Delete failed', error);
+      toast({ 
+        title: 'Delete Failed', 
+        description: 'Could not delete your account. Please try again later.', 
+        variant: 'destructive' 
+      });
+    } finally {
+      setIsLoading(false);
+      setShowDeleteDialog(false);
+    }
+  };
+
+  // Reset settings to original
+  const handleResetChanges = () => {
+    if (initialSettings) {
+      setUserSettings(initialSettings);
+      toast({
+        title: 'Changes Reset',
+        description: 'All changes have been discarded',
+      });
+    }
   };
 
   if (isLoading && !userSettings.email) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
+      <div className="flex items-center justify-center min-h-screen bg-gray-50">
         <div className="text-center space-y-4">
-          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary mx-auto" />
-          <p className="text-muted-foreground">Loading your settings...</p>
+          <Loader2 className="w-8 h-8 animate-spin text-primary mx-auto" />
+          <p className="text-gray-600">Loading settings...</p>
         </div>
       </div>
     );
@@ -370,81 +425,215 @@ const SettingsPage = () => {
   const storageInfo = formatStorageUsage(userSettings.storageUsedBytes);
 
   return (
-    <div className="h-full overflow-y-auto bg-gradient-to-br from-slate-50 via-blue-50/30 to-indigo-50/20 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900">
-      <div className="container mx-auto px-4 py-8 max-w-6xl">
-        
+    <div className="relative min-h-screen bg-gradient-to-br from-slate-50 via-white to-indigo-50">
+      <div className="pointer-events-none absolute inset-0 overflow-hidden">
+        <div className="absolute -top-24 -left-16 h-72 w-72 rounded-full bg-indigo-200 opacity-60 blur-3xl" />
+        <div className="absolute -bottom-32 right-0 h-96 w-96 rounded-full bg-blue-100 opacity-70 blur-3xl" />
+      </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Left Column - Profile & Quick Stats */}
-          <div className="lg:col-span-2 space-y-8">
-            {/* Profile Card */}
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.3 }}
-            >
-              <Card className="border-2 border-primary/20 shadow-2xl bg-gradient-to-br from-white via-blue-50/10 to-indigo-50/10 dark:from-slate-800 dark:via-blue-900/5 dark:to-indigo-900/5 backdrop-blur-xl hover:shadow-3xl transition-shadow duration-300">
-                <CardHeader className="bg-gradient-to-r from-primary/10 via-blue-500/5 to-indigo-500/10 rounded-t-lg border-b border-primary/10">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="p-3 rounded-xl bg-gradient-to-br from-primary/10 to-blue-500/10 shadow-inner">
-                        <User className="w-6 h-6 text-primary" />
-                      </div>
-                      <div>
-                        <CardTitle className="text-2xl font-bold bg-gradient-to-r from-primary to-blue-600 bg-clip-text text-transparent">Profile Information</CardTitle>
-                        <CardDescription className="font-medium">
-                          Update your personal details and profile picture
-                        </CardDescription>
-                      </div>
-                    </div>
-                    <Button
-                      variant={isEditing ? "outline" : "default"}
-                      onClick={() => setIsEditing(!isEditing)}
-                      className={isEditing ? "gap-2 border-2 border-primary/30" : "gap-2 bg-gradient-to-r from-primary via-blue-600 to-indigo-600 hover:from-primary/90 hover:via-blue-700 hover:to-indigo-700 text-white shadow-md"}
-                    >
-                      {isEditing ? 'Cancel' : 'Edit Profile'}
-                    </Button>
+      <div className="relative z-10">
+        <div className="max-w-6xl mx-auto px-4 py-10 space-y-8">
+          <div className="rounded-2xl border bg-white/80 shadow-lg backdrop-blur-md p-6">
+            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+              <div className="flex items-start gap-4">
+                <div className="relative">
+                  <Avatar className="w-16 h-16 border-2 border-white shadow-md">
+                    <AvatarImage src={userSettings.avatarUrl} />
+                    <AvatarFallback className="bg-primary text-white font-semibold">
+                      {userSettings.firstName?.charAt(0) || userSettings.lastName?.charAt(0) || 'U'}
+                    </AvatarFallback>
+                  </Avatar>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-sm text-gray-500">Account</p>
+                  <h1 className="text-2xl font-semibold text-gray-900">Settings</h1>
+                  <p className="text-gray-600">Manage your profile, preferences, and privacy in one place.</p>
+                  <div className="flex items-center gap-2 text-sm text-gray-600 flex-wrap">
+                    <Badge variant={userSettings.subscriptionPlan === 'PROFESSIONAL' ? 'default' : 'outline'} className="rounded-full">
+                      <Crown className="w-3 h-3 mr-1" />
+                      {userSettings.subscriptionPlan || 'STARTER'}
+                    </Badge>
+                    {subscription?.isInTrial && (
+                      <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 rounded-full">
+                        <Gift className="w-3 h-3 mr-1" />
+                        Trial Active
+                      </Badge>
+                    )}
+                    {userSettings.createdAt && (
+                      <span className="text-gray-500">Member since {new Date(userSettings.createdAt).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}</span>
+                    )}
                   </div>
-                </CardHeader>
-                
-                <CardContent className="pt-6">
-                  <div className="flex flex-col md:flex-row gap-8 items-start">
-                    {/* Avatar Section */}
-                    <div className="flex flex-col items-center gap-4">
-                      <div className="relative group">
-                        <div className="absolute -inset-1 bg-gradient-to-r from-primary via-blue-500 to-indigo-500 rounded-full opacity-30 group-hover:opacity-50 blur transition duration-300"></div>
-                        <Avatar className="w-28 h-28 border-4 border-white shadow-2xl relative ring-2 ring-primary/20">
-                          <AvatarImage 
-                            src={userSettings.avatarUrl} 
-                            alt={`${userSettings.firstName} ${userSettings.lastName}`} 
-                          />
-                          <AvatarFallback className="text-3xl bg-gradient-to-br from-primary to-primary/80 text-white">
-                            {userSettings.firstName?.charAt(0) || userSettings.lastName?.charAt(0) || 'U'}
-                          </AvatarFallback>
-                        </Avatar>
-                        <button
-                          onClick={() => setShowAvatarDialog(true)}
-                          className="absolute -bottom-2 -right-2 p-3 rounded-full bg-gradient-to-r from-primary to-blue-600 text-white shadow-xl hover:shadow-2xl hover:scale-110 transition-all duration-300 border-4 border-white dark:border-slate-800 group"
-                        >
-                          <Camera className="w-5 h-5 group-hover:rotate-12 transition-transform" />
-                        </button>
-                      </div>
-                      
-                      <div className="text-center">
-                        <h3 className="font-bold text-xl bg-gradient-to-r from-primary to-blue-600 bg-clip-text text-transparent">
-                          {userSettings.firstName} {userSettings.lastName}
-                        </h3>
-                        <p className="text-sm text-muted-foreground font-medium mt-1">{userSettings.email}</p>
-                        <Badge className="mt-3 px-4 py-1 bg-gradient-to-r from-primary via-blue-600 to-indigo-600 text-white shadow-md font-bold">
-                          {userSettings.role}
-                        </Badge>
-                      </div>
-                    </div>
+                </div>
+              </div>
 
-                    {/* Profile Form */}
-                    <div className="flex-1">
-                      {isEditing ? (
-                        <div className="space-y-4">
+              <div className="flex flex-wrap gap-3">
+                <Button
+                  variant="outline"
+                  className="gap-2"
+                  onClick={handleExportData}
+                  disabled={isLoading}
+                >
+                  <Download className="w-4 h-4" />
+                  Export Data
+                </Button>
+                <Button
+                  variant="outline"
+                  className="gap-2"
+                  onClick={async () => {
+                    await logout();
+                    window.location.href = '/';
+                  }}
+                >
+                  <LogOut className="w-4 h-4" />
+                  Sign Out
+                </Button>
+                <Button
+                  className="gap-2 shadow-sm"
+                  onClick={handleSaveSettings}
+                  disabled={isSaving || !hasChanges()}
+                >
+                  {isSaving ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="w-4 h-4" />
+                      Save Changes
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-6">
+              <div className="flex items-center gap-3 rounded-xl border bg-slate-50 px-4 py-3 shadow-sm">
+                <Crown className="w-5 h-5 text-amber-600" />
+                <div>
+                  <p className="text-xs uppercase tracking-wide text-gray-500">Plan</p>
+                  <p className="text-sm font-medium text-gray-900">{userSettings.subscriptionPlan || 'Starter'}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 rounded-xl border bg-slate-50 px-4 py-3 shadow-sm">
+                <HardDrive className="w-5 h-5 text-indigo-600" />
+                <div>
+                  <p className="text-xs uppercase tracking-wide text-gray-500">Storage</p>
+                  <p className="text-sm font-medium text-gray-900">{storageInfo.used} • {Math.round(storageInfo.percent)}%</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 rounded-xl border bg-slate-50 px-4 py-3 shadow-sm">
+                <Shield className="w-5 h-5 text-emerald-600" />
+                <div>
+                  <p className="text-xs uppercase tracking-wide text-gray-500">Security</p>
+                  <p className="text-sm font-medium text-gray-900">{userSettings.twoFactorAuth ? '2FA enabled' : 'Basic protection'}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 items-start">
+            <div className="lg:col-span-1 lg:sticky lg:top-6">
+              <Card className="h-full flex flex-col rounded-xl border bg-white shadow-sm">
+                <CardContent className="p-6 flex-1 space-y-6">
+                  <div className="flex items-center gap-3 pb-4 border-b">
+                    <Avatar className="w-12 h-12 border">
+                      <AvatarImage src={userSettings.avatarUrl} />
+                      <AvatarFallback className="bg-primary text-white font-semibold">
+                        {userSettings.firstName?.charAt(0) || userSettings.lastName?.charAt(0) || 'U'}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="min-w-0 flex-1">
+                      <h3 className="font-semibold truncate">{userSettings.firstName} {userSettings.lastName}</h3>
+                      <p className="text-sm text-gray-600 truncate">{userSettings.email}</p>
+                    </div>
+                  </div>
+
+                  <nav className="space-y-1">
+                    {[
+                      { id: 'profile', label: 'Profile', icon: User },
+                      { id: 'notifications', label: 'Notifications', icon: Bell },
+                      { id: 'appearance', label: 'Appearance', icon: Palette },
+                      { id: 'privacy', label: 'Privacy & Security', icon: Shield },
+                      { id: 'account', label: 'Account', icon: Settings },
+                    ].map((item) => (
+                      <button
+                        key={item.id}
+                        onClick={() => setActiveTab(item.id)}
+                        className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors ${
+                          activeTab === item.id
+                            ? 'bg-primary/10 text-primary font-medium'
+                            : 'text-gray-700 hover:bg-gray-100'
+                        }`}
+                      >
+                        <item.icon className="w-4 h-4 flex-shrink-0" />
+                        <span className="truncate">{item.label}</span>
+                        {activeTab === item.id && (
+                          <ChevronRight className="w-4 h-4 ml-auto flex-shrink-0" />
+                        )}
+                      </button>
+                    ))}
+                  </nav>
+
+                  <div className="pt-4 border-t space-y-2">
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="outline"
+                            className="w-full justify-start gap-2"
+                            onClick={handleExportData}
+                            disabled={isLoading}
+                          >
+                            <Download className="w-4 h-4" />
+                            <span className="truncate">Export Data</span>
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>Download all your data as PDF</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            <div className="lg:col-span-3 space-y-6 pb-24 min-w-0">
+              {activeTab === 'profile' && (
+                <div className="space-y-6">
+                  <Card className="rounded-xl border bg-white shadow-sm">
+                    <CardHeader>
+                      <CardTitle>Profile Information</CardTitle>
+                      <CardDescription>
+                        Update your personal details and profile picture
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-6">
+                      <div className="flex flex-col md:flex-row gap-8 items-start">
+                        <div className="flex flex-col items-center gap-4">
+                          <div className="relative">
+                            <Avatar className="w-24 h-24 border-2 border-gray-200">
+                              <AvatarImage src={userSettings.avatarUrl} />
+                              <AvatarFallback className="text-xl bg-primary text-white font-semibold">
+                                {userSettings.firstName?.charAt(0) || userSettings.lastName?.charAt(0) || 'U'}
+                              </AvatarFallback>
+                            </Avatar>
+                            <button
+                              onClick={() => {
+                                setAvatarInput(userSettings.avatarUrl || '');
+                                setShowAvatarDialog(true);
+                              }}
+                              className="absolute -bottom-2 -right-2 p-2 bg-white border rounded-full shadow-sm hover:bg-gray-50 transition-colors"
+                            >
+                              <Camera className="w-4 h-4" />
+                            </button>
+                          </div>
+                          <p className="text-sm text-gray-600 text-center max-w-[200px]">
+                            Click the camera icon to update your photo
+                          </p>
+                        </div>
+
+                        <div className="flex-1 space-y-4 min-w-0">
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div className="space-y-2">
                               <Label htmlFor="firstName">First Name</Label>
@@ -452,7 +641,7 @@ const SettingsPage = () => {
                                 id="firstName"
                                 value={userSettings.firstName}
                                 onChange={(e) => updateSetting('firstName', e.target.value)}
-                                placeholder="First Name"
+                                placeholder="Enter your first name"
                               />
                             </div>
                             <div className="space-y-2">
@@ -461,7 +650,7 @@ const SettingsPage = () => {
                                 id="lastName"
                                 value={userSettings.lastName}
                                 onChange={(e) => updateSetting('lastName', e.target.value)}
-                                placeholder="Last Name"
+                                placeholder="Enter your last name"
                               />
                             </div>
                           </div>
@@ -473,226 +662,142 @@ const SettingsPage = () => {
                               type="email"
                               value={userSettings.email}
                               disabled
-                              className="bg-muted"
+                              className="bg-gray-50"
                             />
-                            <p className="text-xs text-muted-foreground">
+                            <p className="text-sm text-gray-600">
                               Contact support to change your email address
                             </p>
                           </div>
 
                           <div className="space-y-2">
                             <Label htmlFor="bio">Bio</Label>
-                            <textarea
+                            <Textarea
                               id="bio"
                               value={userSettings.bio}
                               onChange={(e) => updateSetting('bio', e.target.value)}
                               placeholder="Tell us about yourself..."
-                              className="min-h-[100px] w-full rounded-lg border border-input bg-background px-3 py-2 text-sm resize-none"
+                              className="min-h-[100px]"
                               maxLength={160}
                             />
-                            <div className="flex justify-between text-xs text-muted-foreground">
+                            <div className="flex justify-between text-sm text-gray-600">
                               <span>Brief description for your profile</span>
                               <span>{userSettings.bio.length}/160</span>
                             </div>
                           </div>
 
-                          <Button 
-                            onClick={handleSaveProfile} 
-                            disabled={isLoading}
-                            className="w-full gap-2 bg-gradient-to-r from-primary via-blue-600 to-indigo-600 hover:from-primary/90 hover:via-blue-700 hover:to-indigo-700 text-white shadow-lg hover:shadow-xl transition-all duration-300 font-semibold"
-                            size="lg"
-                          >
-                            <Save className="w-5 h-5" />
-                            Save Changes
-                          </Button>
-                        </div>
-                      ) : (
-                        <div className="space-y-6">
-                          <div>
-                            <h4 className="font-semibold mb-2">About</h4>
-                            <p className="text-muted-foreground">
-                              {userSettings.bio || 'No bio added yet.'}
-                            </p>
-                          </div>
-                          
-                          <Separator />
-                          
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            <div>
-                              <h4 className="font-semibold mb-2 flex items-center gap-2">
-                                <Crown className="w-4 h-4" />
-                                Subscription
-                              </h4>
-                              <div className="space-y-1">
-                                <div className="flex items-center gap-2">
-                                  <Badge className="bg-gradient-to-r from-primary via-blue-600 to-indigo-600 text-white shadow-md px-3 py-1 font-bold">
+                          <div className="pt-4 border-t space-y-4">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              <div>
+                                <Label className="text-sm text-gray-600">Subscription Plan</Label>
+                                <div className="flex items-center gap-2 mt-1 flex-wrap">
+                                  <Badge variant={userSettings.subscriptionPlan === 'PROFESSIONAL' ? 'default' : 'outline'}>
+                                    <Crown className="w-3 h-3 mr-1" />
                                     {userSettings.subscriptionPlan || 'STARTER'}
                                   </Badge>
                                   {subscription?.isInTrial && (
-                                    <Badge className="bg-gradient-to-r from-amber-500 to-amber-600 text-white">
+                                    <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">
                                       <Gift className="w-3 h-3 mr-1" />
                                       Trial Active
                                     </Badge>
                                   )}
                                 </div>
-                                <p className="text-sm text-muted-foreground font-medium">
-                                  Member since {userSettings.createdAt ? new Date(userSettings.createdAt).toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) : 'Recently joined'}
+                                <p className="text-sm text-gray-600 mt-1">
+                                  {userSettings.createdAt ? 
+                                    `Member since ${new Date(userSettings.createdAt).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}` 
+                                    : 'Recently joined'
+                                  }
                                 </p>
                               </div>
-                            </div>
-                            
-                            <div>
-                              <h4 className="font-semibold mb-2 flex items-center gap-2">
-                                <HardDrive className="w-4 h-4" />
-                                Storage Usage
-                              </h4>
-                              <div className="space-y-2">
-                                <div className="flex justify-between text-sm">
-                                  <span>{storageInfo.used} used</span>
-                                  <span className="text-muted-foreground">
-                                    {subscription?.plan?.name === 'PROFESSIONAL' ? '100 GB total' : '5 GB total'}
-                                  </span>
+                              
+                              <div>
+                                <Label className="text-sm text-gray-600">Storage Usage</Label>
+                                <div className="space-y-1 mt-1">
+                                  <div className="flex justify-between text-sm">
+                                    <span>{storageInfo.used} used</span>
+                                    <span className="text-gray-600">{storageInfo.total} total</span>
+                                  </div>
+                                  <Progress value={storageInfo.percent} className="h-2" />
+                                  <p className="text-xs text-gray-600">
+                                    {Math.round(storageInfo.percent)}% of storage used
+                                  </p>
                                 </div>
-                                <Progress value={storageInfo.percent} className="h-2" />
-                                <p className="text-xs text-muted-foreground">
-                                  {subscription?.plan?.name === 'PROFESSIONAL' 
-                                    ? 'Professional plan includes 100 GB storage' 
-                                    : 'Upgrade to Professional for more storage'}
-                                </p>
                               </div>
                             </div>
                           </div>
                         </div>
-                      )}
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </motion.div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+              )}
 
-            {/* Settings Tabs */}
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.3, delay: 0.1 }}
-            >
-              <Tabs defaultValue="notifications" className="w-full">
-                <TabsList className="grid w-full grid-cols-3 bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm p-1.5 rounded-xl border border-primary/10 shadow-lg">
-                  <TabsTrigger value="notifications" className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary data-[state=active]:to-blue-600 data-[state=active]:text-white data-[state=active]:shadow-lg rounded-lg transition-all duration-300 font-medium">
-                    <Bell className="w-4 h-4 mr-2" />
-                    Notifications
-                  </TabsTrigger>
-                  <TabsTrigger value="appearance" className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary data-[state=active]:to-blue-600 data-[state=active]:text-white data-[state=active]:shadow-lg rounded-lg transition-all duration-300 font-medium">
-                    <Palette className="w-4 h-4 mr-2" />
-                    Appearance
-                  </TabsTrigger>
-                  <TabsTrigger value="privacy" className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary data-[state=active]:to-blue-600 data-[state=active]:text-white data-[state=active]:shadow-lg rounded-lg transition-all duration-300 font-medium">
-                    <Shield className="w-4 h-4 mr-2" />
-                    Privacy
-                  </TabsTrigger>
-                </TabsList>
-
-                {/* Notifications Tab */}
-                <TabsContent value="notifications" className="mt-6">
-                  <Card className="shadow-xl border-2 border-primary/10 bg-white/80 dark:bg-slate-800/80 backdrop-blur-xl">
+              {activeTab === 'notifications' && (
+                <div className="space-y-6">
+                  <Card className="rounded-xl border bg-white shadow-sm">
                     <CardHeader>
-                      <CardTitle className="text-xl font-bold bg-gradient-to-r from-primary to-blue-600 bg-clip-text text-transparent">Notification Preferences</CardTitle>
-                      <CardDescription className="font-medium">Control how you receive notifications</CardDescription>
+                      <CardTitle>Notification Preferences</CardTitle>
+                      <CardDescription>
+                        Choose how you want to be notified about updates
+                      </CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-6">
                       <div className="space-y-4">
-                        <div className="flex items-center justify-between p-4 rounded-lg border-2 border-transparent hover:border-primary/30 hover:bg-gradient-to-r hover:from-primary/5 hover:to-blue-500/5 transition-all duration-300 hover:shadow-lg">
-                          <div className="flex items-center gap-3">
-                            <div className="p-2 rounded-lg bg-blue-500/10">
-                              <Mail className="w-5 h-5 text-blue-500" />
+                        {[
+                          {
+                            key: 'emailNotifications' as const,
+                            icon: Mail,
+                            title: 'Email Notifications',
+                            description: 'Receive updates via email',
+                          },
+                          {
+                            key: 'pushNotifications' as const,
+                            icon: Smartphone,
+                            title: 'Push Notifications',
+                            description: 'Receive browser notifications',
+                          },
+                          {
+                            key: 'chatNotifications' as const,
+                            icon: MessageSquare,
+                            title: 'Chat Notifications',
+                            description: 'Get notified about new messages',
+                          },
+                          {
+                            key: 'taskNotifications' as const,
+                            icon: CheckSquare,
+                            title: 'Task Notifications',
+                            description: 'Updates about tasks and deadlines',
+                          },
+                        ].map((item) => (
+                          <div key={item.key} className="flex items-center justify-between p-4 border rounded-lg">
+                            <div className="flex items-center gap-3">
+                              <div className="p-2 bg-gray-100 rounded-lg">
+                                <item.icon className="w-4 h-4 text-gray-700" />
+                              </div>
+                              <div>
+                                <Label className="font-medium">{item.title}</Label>
+                                <p className="text-sm text-gray-600">{item.description}</p>
+                              </div>
                             </div>
-                            <div>
-                              <Label className="font-medium">Email Notifications</Label>
-                              <p className="text-sm text-muted-foreground">
-                                Receive updates and alerts via email
-                              </p>
-                            </div>
+                            <Switch
+                              checked={userSettings[item.key]}
+                              onCheckedChange={(checked) => updateSetting(item.key, checked)}
+                            />
                           </div>
-                          <Switch
-                            checked={userSettings.emailNotifications}
-                            onCheckedChange={(checked) => updateSetting('emailNotifications', checked)}
-                          />
-                        </div>
-
-                        <div className="flex items-center justify-between p-4 rounded-lg border-2 border-transparent hover:border-green-500/30 hover:bg-gradient-to-r hover:from-green-500/5 hover:to-emerald-500/5 transition-all duration-300 hover:shadow-lg">
-                          <div className="flex items-center gap-3">
-                            <div className="p-2 rounded-lg bg-green-500/10">
-                              <Smartphone className="w-5 h-5 text-green-500" />
-                            </div>
-                            <div>
-                              <Label className="font-medium">Push Notifications</Label>
-                              <p className="text-sm text-muted-foreground">
-                                Receive browser notifications
-                              </p>
-                            </div>
-                          </div>
-                          <Switch
-                            checked={userSettings.pushNotifications}
-                            onCheckedChange={(checked) => updateSetting('pushNotifications', checked)}
-                          />
-                        </div>
-
-                        <div className="flex items-center justify-between p-4 rounded-lg border-2 border-transparent hover:border-purple-500/30 hover:bg-gradient-to-r hover:from-purple-500/5 hover:to-violet-500/5 transition-all duration-300 hover:shadow-lg">
-                          <div className="flex items-center gap-3">
-                            <div className="p-2 rounded-lg bg-purple-500/10">
-                              <MessageSquare className="w-5 h-5 text-purple-500" />
-                            </div>
-                            <div>
-                              <Label className="font-medium">Chat Notifications</Label>
-                              <p className="text-sm text-muted-foreground">
-                                Notify about new messages
-                              </p>
-                            </div>
-                          </div>
-                          <Switch
-                            checked={userSettings.chatNotifications}
-                            onCheckedChange={(checked) => updateSetting('chatNotifications', checked)}
-                          />
-                        </div>
-
-                        <div className="flex items-center justify-between p-4 rounded-lg border-2 border-transparent hover:border-amber-500/30 hover:bg-gradient-to-r hover:from-amber-500/5 hover:to-yellow-500/5 transition-all duration-300 hover:shadow-lg">
-                          <div className="flex items-center gap-3">
-                            <div className="p-2 rounded-lg bg-amber-500/10">
-                              <CheckSquare className="w-5 h-5 text-amber-500" />
-                            </div>
-                            <div>
-                              <Label className="font-medium">Task Notifications</Label>
-                              <p className="text-sm text-muted-foreground">
-                                Notify about task updates and deadlines
-                              </p>
-                            </div>
-                          </div>
-                          <Switch
-                            checked={userSettings.taskNotifications}
-                            onCheckedChange={(checked) => updateSetting('taskNotifications', checked)}
-                          />
-                        </div>
+                        ))}
                       </div>
-
-                      <Button 
-                        onClick={handleSaveProfile}
-                        disabled={isLoading}
-                        className="gap-2 bg-gradient-to-r from-primary via-blue-600 to-indigo-600 hover:from-primary/90 hover:via-blue-700 hover:to-indigo-700 text-white shadow-lg hover:shadow-xl transition-all duration-300 font-semibold"
-                        size="lg"
-                      >
-                        <Save className="w-5 h-5" />
-                        Save Notification Settings
-                      </Button>
                     </CardContent>
                   </Card>
-                </TabsContent>
+                </div>
+              )}
 
-                {/* Appearance Tab */}
-                <TabsContent value="appearance" className="mt-6">
-                  <Card className="shadow-xl border-2 border-primary/10 bg-white/80 dark:bg-slate-800/80 backdrop-blur-xl">
+              {activeTab === 'appearance' && (
+                <div className="space-y-6">
+                  <Card className="rounded-xl border bg-white shadow-sm">
                     <CardHeader>
-                      <CardTitle className="text-xl font-bold bg-gradient-to-r from-primary to-blue-600 bg-clip-text text-transparent">Appearance Settings</CardTitle>
-                      <CardDescription className="font-medium">Customize how Syncora looks</CardDescription>
+                      <CardTitle>Appearance</CardTitle>
+                      <CardDescription>
+                        Customize how Syncora looks and feels
+                      </CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-6">
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -706,12 +811,27 @@ const SettingsPage = () => {
                               <SelectValue placeholder="Select theme" />
                             </SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="light">Light</SelectItem>
-                              <SelectItem value="dark">Dark</SelectItem>
-                              <SelectItem value="system">System</SelectItem>
+                              <SelectItem value="light">
+                                <div className="flex items-center gap-2">
+                                  <Sun className="w-4 h-4" />
+                                  Light
+                                </div>
+                              </SelectItem>
+                              <SelectItem value="dark">
+                                <div className="flex items-center gap-2">
+                                  <Moon className="w-4 h-4" />
+                                  Dark
+                                </div>
+                              </SelectItem>
+                              <SelectItem value="system">
+                                <div className="flex items-center gap-2">
+                                  <Settings className="w-4 h-4" />
+                                  System
+                                </div>
+                              </SelectItem>
                             </SelectContent>
                           </Select>
-                          <p className="text-sm text-muted-foreground">
+                          <p className="text-sm text-gray-600">
                             Choose your preferred color scheme
                           </p>
                         </div>
@@ -732,31 +852,24 @@ const SettingsPage = () => {
                               <SelectItem value="de">Deutsch</SelectItem>
                             </SelectContent>
                           </Select>
-                          <p className="text-sm text-muted-foreground">
+                          <p className="text-sm text-gray-600">
                             Interface language preference
                           </p>
                         </div>
                       </div>
-
-                      <Button 
-                        onClick={handleSaveAppearance}
-                        disabled={isLoading}
-                        className="gap-2 bg-gradient-to-r from-primary via-blue-600 to-indigo-600 hover:from-primary/90 hover:via-blue-700 hover:to-indigo-700 text-white shadow-lg hover:shadow-xl transition-all duration-300 font-semibold"
-                        size="lg"
-                      >
-                        <Save className="w-5 h-5" />
-                        Save Appearance Settings
-                      </Button>
                     </CardContent>
                   </Card>
-                </TabsContent>
+                </div>
+              )}
 
-                {/* Privacy Tab */}
-                <TabsContent value="privacy" className="mt-6">
-                  <Card className="shadow-xl border-2 border-primary/10 bg-white/80 dark:bg-slate-800/80 backdrop-blur-xl">
+              {activeTab === 'privacy' && (
+                <div className="space-y-6">
+                  <Card className="rounded-xl border bg-white shadow-sm">
                     <CardHeader>
-                      <CardTitle className="text-xl font-bold bg-gradient-to-r from-primary to-blue-600 bg-clip-text text-transparent">Privacy & Security</CardTitle>
-                      <CardDescription className="font-medium">Manage your privacy settings</CardDescription>
+                      <CardTitle>Privacy & Security</CardTitle>
+                      <CardDescription>
+                        Manage your privacy and security settings
+                      </CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-6">
                       <div className="space-y-4">
@@ -775,357 +888,397 @@ const SettingsPage = () => {
                               <SelectItem value="private">Private (Only Me)</SelectItem>
                             </SelectContent>
                           </Select>
-                          <p className="text-sm text-muted-foreground">
+                          <p className="text-sm text-gray-600">
                             Control who can see your profile information
                           </p>
                         </div>
 
-                        <div className="flex items-center justify-between p-4 rounded-lg border hover:bg-muted/50 transition-colors">
-                          <div className="flex items-center gap-3">
-                            <div className="p-2 rounded-lg bg-green-500/10">
-                              <Eye className="w-5 h-5 text-green-500" />
+                        <div className="space-y-4">
+                          {[
+                            {
+                              key: 'onlineStatus' as const,
+                              icon: Eye,
+                              title: 'Online Status',
+                              description: 'Show when you\'re online',
+                            },
+                            {
+                              key: 'readReceipts' as const,
+                              icon: Key,
+                              title: 'Read Receipts',
+                              description: 'Send read receipts in conversations',
+                            },
+                            {
+                              key: 'twoFactorAuth' as const,
+                              icon: Shield,
+                              title: 'Two-Factor Authentication',
+                              description: 'Add an extra layer of security',
+                            },
+                          ].map((item) => (
+                            <div key={item.key} className="flex items-center justify-between p-4 border rounded-lg">
+                              <div className="flex items-center gap-3">
+                                <div className="p-2 bg-gray-100 rounded-lg">
+                                  <item.icon className="w-4 h-4 text-gray-700" />
+                                </div>
+                                <div>
+                                  <Label className="font-medium">{item.title}</Label>
+                                  <p className="text-sm text-gray-600">{item.description}</p>
+                                </div>
+                              </div>
+                              <Switch
+                                checked={userSettings[item.key]}
+                                onCheckedChange={(checked) => updateSetting(item.key, checked)}
+                              />
                             </div>
-                            <div>
-                              <Label className="font-medium">Show Online Status</Label>
-                              <p className="text-sm text-muted-foreground">
-                                Let others see when you're online
-                              </p>
-                            </div>
-                          </div>
-                          <Switch
-                            checked={userSettings.onlineStatus}
-                            onCheckedChange={(checked) => updateSetting('onlineStatus', checked)}
-                          />
-                        </div>
-
-                        <div className="flex items-center justify-between p-4 rounded-lg border hover:bg-muted/50 transition-colors">
-                          <div className="flex items-center gap-3">
-                            <div className="p-2 rounded-lg bg-blue-500/10">
-                              <Key className="w-5 h-5 text-blue-500" />
-                            </div>
-                            <div>
-                              <Label className="font-medium">Read Receipts</Label>
-                              <p className="text-sm text-muted-foreground">
-                                Send read receipts in conversations
-                              </p>
-                            </div>
-                          </div>
-                          <Switch
-                            checked={userSettings.readReceipts}
-                            onCheckedChange={(checked) => updateSetting('readReceipts', checked)}
-                          />
+                          ))}
                         </div>
                       </div>
-
-                      <Button 
-                        onClick={handleSavePrivacy}
-                        disabled={isLoading}
-                        className="gap-2 bg-gradient-to-r from-primary via-blue-600 to-indigo-600 hover:from-primary/90 hover:via-blue-700 hover:to-indigo-700 text-white shadow-lg hover:shadow-xl transition-all duration-300 font-semibold"
-                        size="lg"
-                      >
-                        <Save className="w-5 h-5" />
-                        Save Privacy Settings
-                      </Button>
                     </CardContent>
                   </Card>
-                </TabsContent>
-              </Tabs>
-            </motion.div>
+                </div>
+              )}
+
+              {activeTab === 'account' && (
+                <div className="space-y-6">
+                  <Card className="rounded-xl border bg-white shadow-sm">
+                    <CardHeader>
+                      <CardTitle>Account Information</CardTitle>
+                      <CardDescription>
+                        View and manage your account details
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-6">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="space-y-4">
+                          <div>
+                            <Label className="text-sm text-gray-600">Account ID</Label>
+                            <p className="font-mono text-sm mt-1 bg-gray-50 p-2 rounded">
+                              {userSettings.id || 'N/A'}
+                            </p>
+                          </div>
+                          <div>
+                            <Label className="text-sm text-gray-600">Account Created</Label>
+                            <p className="mt-1">
+                              {userSettings.createdAt ? new Date(userSettings.createdAt).toLocaleDateString('en-US', { 
+                                month: 'long', 
+                                day: 'numeric', 
+                                year: 'numeric' 
+                              }) : 'N/A'}
+                            </p>
+                          </div>
+                          <div>
+                            <Label className="text-sm text-gray-600">Last Updated</Label>
+                            <p className="mt-1">
+                              {userSettings.updatedAt ? new Date(userSettings.updatedAt).toLocaleDateString('en-US', { 
+                                month: 'short', 
+                                day: 'numeric', 
+                                year: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit'
+                              }) : 'N/A'}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="space-y-4">
+                          <div>
+                            <Label className="text-sm text-gray-600">Storage Usage</Label>
+                            <div className="mt-1">
+                              <div className="flex items-center justify-between text-sm mb-1">
+                                <span className="font-medium">{storageInfo.used}</span>
+                                <span className="text-gray-600">
+                                  {Math.round(storageInfo.percent)}% of {storageInfo.total}
+                                </span>
+                              </div>
+                              <Progress value={storageInfo.percent} className="h-2" />
+                            </div>
+                          </div>
+                          
+                          <div>
+                            <Label className="text-sm text-gray-600">Security Status</Label>
+                            <div className="flex items-center gap-2 mt-1">
+                              {userSettings.twoFactorAuth ? (
+                                <Badge className="bg-green-100 text-green-800 border-green-200 hover:bg-green-100">
+                                  <CheckCircle className="w-3 h-3 mr-1" />
+                                  Enhanced Security
+                                </Badge>
+                              ) : (
+                                <Badge variant="outline" className="text-gray-600">
+                                  <XCircle className="w-3 h-3 mr-1" />
+                                  Basic Security
+                                </Badge>
+                              )}
+                            </div>
+                            <p className="text-sm text-gray-600 mt-1">
+                              {userSettings.twoFactorAuth 
+                                ? 'Two-factor authentication is enabled' 
+                                : 'Enable two-factor authentication for enhanced security'
+                              }
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="border-red-200 rounded-xl shadow-sm">
+                    <CardHeader>
+                      <CardTitle className="text-red-700 flex items-center gap-2">
+                        <AlertTriangle className="w-5 h-5" />
+                        Danger Zone
+                      </CardTitle>
+                      <CardDescription>
+                        Irreversible actions. Please proceed with caution.
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="p-4 border border-red-200 rounded-lg bg-red-50">
+                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                          <div>
+                            <h4 className="font-medium text-red-800">Delete Account</h4>
+                            <p className="text-sm text-red-600 mt-1">
+                              Permanently delete your account and all associated data
+                            </p>
+                          </div>
+                          <Button
+                            variant="destructive"
+                            onClick={() => setShowDeleteDialog(true)}
+                            className="gap-2 whitespace-nowrap"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                            Delete Account
+                          </Button>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+              )}
+            </div>
           </div>
-
-          {/* Right Column - Danger Zone & Account Info */}
-          <motion.div
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.3, delay: 0.2 }}
-            className="lg:col-span-1 space-y-6"
-          >
-            {/* Account Info */}
-            <Card className="shadow-xl border-2 border-primary/10 bg-white/80 dark:bg-slate-800/80 backdrop-blur-xl">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-xl font-bold bg-gradient-to-r from-primary to-blue-600 bg-clip-text text-transparent">
-                  <Settings className="w-5 h-5 text-primary" />
-                  Account Information
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <Label className="text-sm text-muted-foreground font-medium">Account ID</Label>
-                  <p className="font-mono text-sm font-semibold bg-gradient-to-r from-primary to-blue-600 bg-clip-text text-transparent">
-                    {userSettings.id ? `#${userSettings.id}` : 'Loading...'}
-                  </p>
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-sm text-muted-foreground font-medium">Created</Label>
-                  <p className="font-medium">
-                    {userSettings.createdAt ? new Date(userSettings.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Recently'}
-                  </p>
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-sm text-muted-foreground font-medium">Last Updated</Label>
-                  <p className="font-medium">
-                    {userSettings.updatedAt ? new Date(userSettings.updatedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Just now'}
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Danger Zone */}
-            <Card className="border-2 border-red-500/30 shadow-xl bg-white/80 dark:bg-slate-800/80 backdrop-blur-xl">
-              <CardHeader>
-                <CardTitle className="text-xl font-bold bg-gradient-to-r from-red-600 to-orange-600 bg-clip-text text-transparent flex items-center gap-2">
-                  <AlertTriangle className="w-5 h-5 text-red-600" />
-                  Danger Zone
-                </CardTitle>
-                <CardDescription className="font-medium">Irreversible actions</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <Button 
-                  variant="outline" 
-                  onClick={handleExportData}
-                  className="w-full justify-start gap-2 border-2 border-blue-500/30 text-blue-600 hover:bg-gradient-to-r hover:from-blue-50 hover:to-indigo-50 dark:hover:from-blue-950 dark:hover:to-indigo-950 hover:border-blue-500/50 transition-all duration-300 shadow-sm hover:shadow-md font-medium"
-                  size="lg"
-                >
-                  <Download className="w-4 h-4" />
-                  Export All Data
-                  <Badge className="ml-auto bg-blue-500/10 text-blue-600 text-xs">PDF</Badge>
-                </Button>
-                
-                <Separator />
-                
-                <Button 
-                  variant="outline" 
-                  onClick={handleDeleteAccount}
-                  className="w-full justify-start gap-2 border-2 border-red-500/30 text-red-600 hover:bg-gradient-to-r hover:from-red-50 hover:to-orange-50 dark:hover:from-red-950 dark:hover:to-orange-950 hover:border-red-500/50 transition-all duration-300 shadow-sm hover:shadow-md font-medium"
-                  size="lg"
-                >
-                  <Trash2 className="w-4 h-4" />
-                  Delete Account
-                </Button>
-              </CardContent>
-            </Card>
-          </motion.div>
         </div>
       </div>
+
+      {/* Save Button (Fixed at bottom) */}
+      {hasChanges() && (
+        <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 z-50">
+          <Card className="shadow-lg border-primary/20 min-w-[300px]">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <p className="font-medium">Unsaved Changes</p>
+                  <p className="text-sm text-gray-600">
+                    You have unsaved changes
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={handleResetChanges}
+                    disabled={isSaving}
+                    size="sm"
+                  >
+                    Discard
+                  </Button>
+                  <Button
+                    onClick={handleSaveSettings}
+                    disabled={isSaving}
+                    size="sm"
+                    className="gap-2"
+                  >
+                    {isSaving ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Saving...
+                      </>
+                    ) : (
+                      <>
+                        <Save className="w-4 h-4" />
+                        Save Changes
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       {/* Avatar Update Dialog */}
-      <AvatarUpdateDialog
-        open={showAvatarDialog}
-        onOpenChange={setShowAvatarDialog}
-        avatarInput={avatarInput}
-        onAvatarInputChange={setAvatarInput}
-        currentAvatar={userSettings.avatarUrl}
-        firstName={userSettings.firstName}
-        lastName={userSettings.lastName}
-        onFileUpload={handleFileUpload}
-        onUrlSubmit={handleAvatarUpdate}
-        isLoading={isLoading}
-      />
+      <Dialog open={showAvatarDialog} onOpenChange={setShowAvatarDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Update Profile Picture</DialogTitle>
+            <DialogDescription>
+              Upload an image or paste a URL for your new profile picture
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-6">
+            <div className="flex flex-col items-center gap-4">
+              <div className="relative">
+                <Avatar className="w-32 h-32 border-2">
+                  <AvatarImage 
+                    src={avatarInput || userSettings.avatarUrl} 
+                    alt="Preview" 
+                    className="object-cover"
+                  />
+                  <AvatarFallback className="text-2xl bg-primary text-white font-semibold">
+                    {(userSettings.firstName || userSettings.lastName)?.charAt(0) || 'U'}
+                  </AvatarFallback>
+                </Avatar>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <Label htmlFor="avatar-upload" className="cursor-pointer">
+                  <div className="flex items-center justify-center gap-2 p-4 border-2 border-dashed border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+                    <Camera className="w-5 h-5" />
+                    <span>Upload from device</span>
+                  </div>
+                </Label>
+                <input
+                  id="avatar-upload"
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) handleFileUpload(file);
+                    e.target.value = ''; // Reset input
+                  }}
+                />
+                <p className="text-xs text-gray-600 mt-2 text-center">
+                  JPG, PNG or GIF. Max size 2MB
+                </p>
+              </div>
+
+              <div className="relative">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-gray-300"></div>
+                </div>
+                <div className="relative flex justify-center text-xs uppercase">
+                  <span className="bg-white px-2 text-gray-500">OR</span>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="avatar-url">Image URL</Label>
+                <Input
+                  id="avatar-url"
+                  type="text"
+                  placeholder="https://example.com/image.jpg"
+                  value={avatarInput}
+                  onChange={(e) => setAvatarInput(e.target.value)}
+                />
+                <p className="text-xs text-gray-600">
+                  Enter a direct link to your image
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button variant="outline" type="button">Cancel</Button>
+            </DialogClose>
+            <Button 
+              onClick={handleAvatarUpdate}
+              disabled={!avatarInput.trim() || isLoading}
+              className="gap-2"
+            >
+              {isLoading ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Updating...
+                </>
+              ) : (
+                'Update Picture'
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Delete Account Dialog */}
-      <DeleteAccountDialog
-        open={showDeleteDialog}
-        onOpenChange={setShowDeleteDialog}
-        onConfirm={async () => {
-          try {
-            setIsLoading(true);
-            await userApi.deleteCurrentUser();
-            toast({ title: 'Account Deleted', description: 'Your account has been deleted.' });
-            await logout();
-            window.location.href = '/auth';
-          } catch (error) {
-            console.error('Delete failed', error);
-            toast({ title: 'Delete Failed', description: 'Could not delete your account.', variant: 'destructive' });
-          } finally {
-            setIsLoading(false);
-            setShowDeleteDialog(false);
-          }
-        }}
-      />
-    </div>
-  );
-};
+      <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <div className="flex items-center justify-center w-16 h-16 rounded-full bg-red-100 mx-auto mb-4">
+              <AlertTriangle className="w-8 h-8 text-red-600" />
+            </div>
+            <DialogTitle className="text-center">Delete Account</DialogTitle>
+            <DialogDescription className="text-center">
+              This action cannot be undone. All your data will be permanently deleted.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+              <ul className="space-y-3 text-sm">
+                <li className="flex items-start gap-2 text-red-700">
+                  <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                  <span>All your notes, tasks, and contacts will be permanently deleted</span>
+                </li>
+                <li className="flex items-start gap-2 text-red-700">
+                  <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                  <span>Your subscription will be cancelled immediately</span>
+                </li>
+                <li className="flex items-start gap-2 text-red-700">
+                  <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                  <span>This action cannot be reversed or recovered</span>
+                </li>
+              </ul>
+            </div>
 
-// Avatar Update Dialog Component
-interface AvatarUpdateDialogProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  avatarInput: string;
-  onAvatarInputChange: (value: string) => void;
-  currentAvatar: string;
-  firstName: string;
-  lastName: string;
-  onFileUpload: (file: File) => void;
-  onUrlSubmit: (url: string) => void;
-  isLoading: boolean;
-}
-
-const AvatarUpdateDialog: React.FC<AvatarUpdateDialogProps> = ({
-  open,
-  onOpenChange,
-  avatarInput,
-  onAvatarInputChange,
-  currentAvatar,
-  firstName,
-  lastName,
-  onFileUpload,
-  onUrlSubmit,
-  isLoading,
-}) => (
-  <Dialog open={open} onOpenChange={onOpenChange}>
-    <DialogContent className="sm:max-w-md">
-      <DialogHeader>
-        <DialogTitle>Update Profile Picture</DialogTitle>
-        <DialogDescription>
-          Upload an image or paste a URL for your new avatar
-        </DialogDescription>
-      </DialogHeader>
-      
-      <div className="space-y-4">
-        <div className="flex flex-col items-center gap-4">
-          <div className="relative">
-            <Avatar className="w-24 h-24 border-4 border-white shadow-lg">
-              <AvatarImage src={avatarInput || currentAvatar} alt="Avatar Preview" />
-              <AvatarFallback className="text-2xl bg-gradient-to-br from-primary to-primary/80 text-white">
-                {(firstName || lastName)?.charAt(0) || 'U'}
-              </AvatarFallback>
-            </Avatar>
-          </div>
-        </div>
-
-        <div className="space-y-4">
-          <div>
-            <Label htmlFor="avatar-upload" className="cursor-pointer">
-              <div className="flex items-center justify-center gap-2 p-4 border-2 border-dashed rounded-lg hover:bg-muted/50 transition-colors">
-                <Camera className="w-5 h-5" />
-                <span>Upload from device</span>
-              </div>
-            </Label>
-            <input
-              id="avatar-upload"
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) onFileUpload(file);
-              }}
-            />
-          </div>
-
-          <div className="text-center text-sm text-muted-foreground">OR</div>
-
-          <div className="space-y-2">
-            <Input
-              type="text"
-              placeholder="Paste image URL..."
-              value={avatarInput}
-              onChange={(e) => onAvatarInputChange(e.target.value)}
-              className="w-full"
-            />
-          </div>
-        </div>
-
-        <p className="text-xs text-muted-foreground text-center">
-          JPG, PNG or GIF. Max size 2MB. You can upload or paste an image URL.
-        </p>
-      </div>
-
-      <DialogFooter>
-        <Button variant="outline" onClick={() => onOpenChange(false)}>
-          Cancel
-        </Button>
-        <Button 
-          onClick={() => onUrlSubmit(avatarInput)}
-          disabled={!avatarInput.trim() || isLoading}
-          className="bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70"
-        >
-          Update Avatar
-        </Button>
-      </DialogFooter>
-    </DialogContent>
-  </Dialog>
-);
-
-// Delete Account Dialog Component
-interface DeleteAccountDialogProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  onConfirm: () => void | Promise<void>;
-}
-
-const DeleteAccountDialog: React.FC<DeleteAccountDialogProps> = ({ open, onOpenChange, onConfirm }) => {
-  const [confirmText, setConfirmText] = useState('');
-  const [isDeleting, setIsDeleting] = useState(false);
-  
-  const handleConfirm = async () => {
-    setIsDeleting(true);
-    try {
-      await onConfirm();
-    } finally {
-      setIsDeleting(false);
-    }
-  };
-  
-  const disabled = confirmText !== 'DELETE';
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <div className="flex items-center justify-center w-12 h-12 rounded-full bg-red-100 mx-auto mb-4">
-            <AlertTriangle className="w-6 h-6 text-red-600" />
-          </div>
-          <DialogTitle className="text-center">Delete Account</DialogTitle>
-          <DialogDescription className="text-center">
-            This action cannot be undone. All your data will be permanently deleted.
-          </DialogDescription>
-        </DialogHeader>
-        
-        <div className="space-y-4">
-          <div className="text-center">
-            <p className="text-sm font-medium mb-2">Type "DELETE" to confirm</p>
-            <Input
-              value={confirmText}
-              onChange={(e) => setConfirmText(e.target.value.toUpperCase())}
-              placeholder="Type DELETE"
-              className="text-center"
-            />
+            <div className="space-y-2">
+              <Label className="font-medium">Type "DELETE" to confirm</Label>
+              <Input
+                placeholder="Type DELETE"
+                className="text-center font-mono tracking-wider uppercase"
+                onChange={(e) => {
+                  const value = e.target.value.toUpperCase();
+                  // Only allow DELETE input
+                  if (value === 'DELETE' || value === 'DELET' || value === 'DELE' || value === 'DEL' || value === 'DE' || value === 'D' || value === '') {
+                    e.target.value = value;
+                  }
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && e.currentTarget.value === 'DELETE') {
+                    handleDeleteAccount();
+                  }
+                }}
+              />
+            </div>
           </div>
           
-          <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-            <ul className="space-y-2 text-sm text-red-700">
-              <li className="flex items-start gap-2">
-                <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
-                All your notes, tasks, and contacts will be deleted
-              </li>
-              <li className="flex items-start gap-2">
-                <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
-                Your subscription will be cancelled immediately
-              </li>
-              <li className="flex items-start gap-2">
-                <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
-                This action cannot be reversed
-              </li>
-            </ul>
-          </div>
-        </div>
-        
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
-          </Button>
-          <Button 
-            variant="destructive" 
-            disabled={disabled || isDeleting}
-            onClick={handleConfirm}
-            className="bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700"
-          >
-            {isDeleting ? 'Deleting...' : 'Delete Account'}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button variant="outline" type="button">Cancel</Button>
+            </DialogClose>
+            <Button 
+              variant="destructive" 
+              onClick={handleDeleteAccount}
+              disabled={isLoading}
+              className="gap-2"
+            >
+              {isLoading ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="w-4 h-4" />
+                  Delete Account
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
   );
 };
 

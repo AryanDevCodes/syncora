@@ -1,0 +1,54 @@
+name: Deploy Frontend to S3 + CloudFront
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'syncora_frontend/**'
+      - '.github/workflows/frontend-deploy.yml'
+  workflow_dispatch:
+
+env:
+  AWS_REGION: us-east-1                     # change if needed
+  S3_BUCKET: syncora-frontend-bucket        # replace with your bucket name
+  CLOUDFRONT_DISTRIBUTION_ID: ABCDEFGHIJKL  # replace with your distribution id
+
+jobs:
+  deploy-frontend:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::123456789012:role/github-actions-frontend  # replace with your role
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: npm
+          cache-dependency-path: syncora_frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: syncora_frontend
+        run: npm ci
+
+      - name: Build frontend
+        working-directory: syncora_frontend
+        run: npm run build
+
+      - name: Sync to S3
+        run: |
+          aws s3 sync syncora_frontend/dist s3://$S3_BUCKET/ --delete --cache-control max-age=31536000,public
+          aws s3 cp syncora_frontend/dist/index.html s3://$S3_BUCKET/index.html --cache-control max-age=300,public --content-type text/html
+
+      - name: Invalidate CloudFront cache
+        run: |
+          aws cloudfront create-invalidation --distribution-id $CLOUDFRONT_DISTRIBUTION_ID --paths "/*"

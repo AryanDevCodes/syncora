@@ -30,6 +30,9 @@ public class User {
     @Column(length = 1000)
     private String avatarUrl;
 
+    @Column(length = 500)
+    private String bio;
+
     // OAuth2 fields
     @Column(length = 20)
     private String provider; // GITHUB, GOOGLE, LOCAL

@@ -92,23 +92,33 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   // --------------------------------------------------
   useEffect(() => {
     const init = async () => {
-      if (!token) {
+      // Check localStorage for most recent token (in case it was updated by OAuth callback)
+      const storedToken = localStorage.getItem("accessToken");
+      const storedRefreshToken = localStorage.getItem("refreshToken");
+      
+      if (!storedToken) {
         setIsLoading(false);
         return;
       }
 
       try {
-        const dto = await getCurrentUser(token);
+        const dto = await getCurrentUser(storedToken);
         const mapped = mapUserDto(dto);
 
+        console.log("✅ User fetched successfully:", mapped.email);
+        setToken(storedToken);
+        setRefreshToken(storedRefreshToken);
         setUser(mapped);
         localStorage.setItem("userEmail", mapped.email);
-      } catch (err) {
+      } catch (err: any) {
+        console.error("❌ Error fetching user:", err?.response?.status, err?.message);
         // Token expired → Try refreshing
-        if (refreshToken) {
+        if (storedRefreshToken) {
           try {
-            const newTokens = await refreshAccessToken(refreshToken);
+            console.log("🔄 Attempting to refresh token...");
+            const newTokens = await refreshAccessToken(storedRefreshToken);
 
+            console.log("✅ Token refreshed successfully");
             setToken(newTokens.token);
             setRefreshToken(newTokens.refreshToken);
 
@@ -116,11 +126,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             localStorage.setItem("refreshToken", newTokens.refreshToken);
 
             const dto2 = await getCurrentUser(newTokens.token);
+            console.log("✅ User fetched with new token:", dto2.email);
             setUser(mapUserDto(dto2));
-          } catch (refreshFail) {
+          } catch (refreshFail: any) {
+            console.error("❌ Token refresh failed:", refreshFail?.response?.status, refreshFail?.message);
             internalLogout();
           }
         } else {
+          console.error("❌ No refresh token available, logging out");
           internalLogout();
         }
       }

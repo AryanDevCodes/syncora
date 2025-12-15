@@ -14,6 +14,7 @@ const OAuthCallback = () => {
                 const refreshToken = searchParams.get('refreshToken');
                 const userId = searchParams.get('userId');
                 const email = searchParams.get('email');
+                const avatarUrl = searchParams.get('avatarUrl');
 
                 if (!accessToken || !refreshToken || !userId || !email) {
                     console.error('❌ Missing OAuth parameters');
@@ -24,17 +25,26 @@ const OAuthCallback = () => {
                 console.log('✅ OAuth tokens received');
                 console.log('📧 User email:', email);
                 console.log('🆔 User ID:', userId);
+                if (avatarUrl) {
+                    console.log('🖼️ Avatar URL:', avatarUrl);
+                }
 
                 // Store tokens in localStorage (AuthContext will pick them up)
                 localStorage.setItem('accessToken', accessToken);
                 localStorage.setItem('refreshToken', refreshToken);
                 localStorage.setItem('user_id', userId);
                 localStorage.setItem('userEmail', email);
+                if (avatarUrl) {
+                    localStorage.setItem('avatarUrl', avatarUrl);
+                }
 
                 console.log('💾 Tokens stored in localStorage');
 
-                // Force page reload to trigger AuthContext initialization with new tokens
+                // Dispatch a custom event to notify AuthContext of the change
+                window.dispatchEvent(new Event('oauth-tokens-stored'));
+
                 console.log('🔄 Redirecting to dashboard...');
+                // Force full reload to ensure AuthContext re-initializes with new tokens
                 window.location.href = '/dashboard';
             } catch (error) {
                 console.error('❌ OAuth callback error:', error);

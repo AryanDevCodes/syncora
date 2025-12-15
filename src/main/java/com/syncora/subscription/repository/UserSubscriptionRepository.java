@@ -3,8 +3,10 @@ package com.syncora.subscription.repository;
 import com.syncora.subscription.entity.UserSubscription;
 import com.syncora.user.entity.User;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -12,6 +14,10 @@ import java.util.Optional;
 
 @Repository
 public interface UserSubscriptionRepository extends JpaRepository<UserSubscription, String> {
+    
+    @Modifying
+    @Transactional
+    void deleteAllByUser(User user);
     
     Optional<UserSubscription> findByUserAndStatus(User user, UserSubscription.SubscriptionStatus status);
     

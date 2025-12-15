@@ -1,0 +1,8 @@
+target
+node_modules
+.git
+.gitignore
+.DS_Store
+logs
+syncora_frontend/node_modules
+syncora_frontend/dist

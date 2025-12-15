@@ -15,6 +15,9 @@ public class UpdateUserRequest {
     @Size(max = 1000)
     private String avatarUrl;
 
+    @Size(max = 500)
+    private String bio;
+
     // Notification settings
     private Boolean emailNotifications;
     private Boolean pushNotifications;
