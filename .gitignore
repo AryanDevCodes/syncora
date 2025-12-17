@@ -16,7 +16,6 @@ target/
 *.iws
 *.iml
 *.ipr
-*.application.properties
 
 /nbproject/private/
 /nbbuild/

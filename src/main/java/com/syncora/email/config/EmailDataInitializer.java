@@ -7,9 +7,9 @@ import com.syncora.user.entity.User;
 import com.syncora.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.boot.CommandLineRunner;
-import org.springframework.context.annotation.Bean;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.event.EventListener;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -20,9 +20,12 @@ import java.util.List;
 @Slf4j
 public class EmailDataInitializer {
     
-    @Bean
-    public CommandLineRunner initializeEmailData(EmailRepository emailRepository, UserRepository userRepository) {
-        return args -> {
+    private final EmailRepository emailRepository;
+    private final UserRepository userRepository;
+    
+    @EventListener(ApplicationReadyEvent.class)
+    public void initializeEmailData() {
+        try {
             if (emailRepository.count() > 0) {
                 log.info("Email data already exists, skipping initialization");
                 return;
@@ -146,6 +149,8 @@ public class EmailDataInitializer {
             
             emailRepository.saveAll(sampleEmails);
             log.info("Created {} sample emails for user: {}", sampleEmails.size(), userEmail);
-        };
+        } catch (Exception e) {
+            log.error("Failed to initialize email data", e);
+        }
     }
 }
