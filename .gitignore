@@ -16,7 +16,7 @@ target/
 *.iws
 *.iml
 *.ipr
-
+*.properties
 /nbproject/private/
 /nbbuild/
 /dist/
@@ -47,11 +47,15 @@ build/
 logs/
 *.log
 
-# Environment variables
-# .env
-.env.local
-.env.*.local
-application-local.properties
+
+# Environment variables and sensitive config
+*.env
+*.local
+**/.env
+**/application.properties
+**/application.yml
+
+!application-local.properties
 
 # OS files
 .DS_Store
