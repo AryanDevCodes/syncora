@@ -47,15 +47,12 @@ build/
 logs/
 *.log
 
-
-# Environment variables and sensitive config
+# Environment variables
+# .env
 *.env
 *.local
-**/.env
-**/application.properties
-**/application.yml
-
-!application-local.properties
+!application.properties
+application-local.properties
 
 # OS files
 .DS_Store
@@ -94,3 +91,4 @@ scripts/*.pyc
 # Zego token service
 zego-token-service/node_modules/
 zego-token-service/.env
+src/main/resources/application.yml

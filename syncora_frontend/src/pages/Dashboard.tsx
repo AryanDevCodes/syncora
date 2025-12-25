@@ -1,11 +1,12 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useAuth } from '@/contexts/AuthContext';
 import { userApi } from '@/api/userApi';
 import { chatApi } from '@/api/chatApi';
 import { contactApi } from '@/api/contactApi';
 import { notesApi } from '@/api/notesApi';
 import { taskApi } from '@/api/taskApi';
-import { MessageSquare, Video, PenTool, StickyNote, ListTodo, Zap, Sparkles, Users, Clock, PlusCircle, UserPlus, RotateCcw } from "lucide-react";
+import { emailApi } from '@/api/emailApi';
+import { MessageSquare, Mail, PenTool, StickyNote, ListTodo, Zap, Sparkles, Users, Clock, PlusCircle, UserPlus, RotateCcw } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
@@ -14,6 +15,7 @@ import AnalyticsChart from '@/components/ui/AnalyticsChart';
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { SubscriptionGuard } from '@/components/subscription/SubscriptionGuard';
+import { motion } from "framer-motion";
 
 type StatItem = {
   icon: any;
@@ -60,7 +62,7 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState<StatItem[]>([
     { icon: MessageSquare, label: "Messages", value: 0, valueText: "-", change: "Get started", color: "from-blue-500 to-cyan-500", path: "/chat" },
-    { icon: Video, label: "Video Calls", value: 0, valueText: "-", change: "Start a call", color: "from-purple-500 to-pink-500", path: "/video" },
+    { icon: Mail, label: "Emails", value: 0, valueText: "-", change: "Check inbox", color: "from-purple-500 to-pink-500", path: "/email" },
     { icon: StickyNote, label: "Notes", value: 0, valueText: "-", change: "Create first", color: "from-green-500 to-emerald-500", path: "/notes" },
     { icon: ListTodo, label: "Tasks", value: 0, valueText: "-", change: "Add tasks", color: "from-orange-500 to-red-500", path: "/tasks" },
   ]);
@@ -70,24 +72,27 @@ const Dashboard = () => {
   const [manageTab, setManageTab] = useState<'contacts' | 'notes' | 'tasks'>('contacts');
   const [manageNotes, setManageNotes] = useState<any[]>([]);
   const [manageTasks, setManageTasks] = useState<any[]>([]);
-  const [onboardingTips] = useState([
+  
+  // Memoize onboarding tips to prevent recreation
+  const onboardingTips = useMemo(() => [
     { label: 'Start a chat', path: '/chat', icon: MessageSquare },
     { label: 'Create your first note', path: '/notes', icon: StickyNote },
     { label: 'Add a task', path: '/tasks', icon: ListTodo },
     { label: 'Invite your team', path: '/contacts', icon: Users },
-  ]);
+  ], []);
 
   const fetchStats = useCallback(async () => {
     setLoading(true);
     try {
-      const [rooms, contacts, notesCount, tasksCount] = await Promise.all([
+      const [rooms, contacts, allNotes, tasksCount, emailCounts] = await Promise.all([
         chatApi.getAllRooms(),
         contactApi.getAllContacts(),
-        notesApi.getNotesCount().catch(() => 0),
+        notesApi.getAllNotes().catch(() => []),
         taskApi.getTasksCount().catch(() => 0),
+        emailApi.getEmailCounts().catch(() => ({ inbox: 0 })),
       ]);
       const roomsCount = Array.isArray(rooms) ? rooms.length : 0;
-      const callsCount = 0;
+      const emailsCount = emailCounts.inbox || 0;
       // Compute chat breakdown
       const contactsSet = new Set((contacts || []).map((c: any) => (c.email || '').toLowerCase()));
       const groups = (rooms || []).filter((r: any) => r.isGroup);
@@ -117,17 +122,11 @@ const Dashboard = () => {
         nonContactPeers: nonContactPeers.filter(Boolean),
       });
 
-      // Robust notes count: fallback to list length if count missing
-      let notesCountResolved = Number(notesCount) || 0;
-      if (!notesCountResolved) {
-        try {
-          const allNotes = await notesApi.getAllNotes();
-          notesCountResolved = Array.isArray(allNotes) ? allNotes.length : 0;
-        } catch {}
-      }
+      // Always use allNotes length for notes count
+      const notesCountResolved = Array.isArray(allNotes) ? allNotes.length : 0;
       setStats([
         { icon: MessageSquare, label: "Messages", value: roomsCount, valueText: String(roomsCount), change: roomsCount ? `+${roomsCount}` : 'Get started', color: "from-blue-500 to-cyan-500", path: "/chat" },
-        { icon: Video, label: "Video Calls", value: callsCount, valueText: callsCount ? String(callsCount) : '-', change: callsCount ? `+${callsCount}` : 'Start a call', color: "from-purple-500 to-pink-500", path: "/video" },
+        { icon: Mail, label: "Emails", value: emailsCount, valueText: String(emailsCount), change: emailsCount ? `${emailsCount} unread` : 'Check inbox', color: "from-purple-500 to-pink-500", path: "/email" },
         { icon: StickyNote, label: "Notes", value: notesCountResolved, valueText: String(notesCountResolved), change: notesCountResolved ? `+${notesCountResolved}` : 'Create first', color: "from-green-500 to-emerald-500", path: "/notes" },
         { icon: ListTodo, label: "Tasks", value: Number(tasksCount) || 0, valueText: String(Number(tasksCount) || 0), change: tasksCount ? `+${tasksCount}` : 'Add tasks', color: "from-orange-500 to-red-500", path: "/tasks" },
       ]);
@@ -212,29 +211,43 @@ const Dashboard = () => {
     fetchStats();
     fetchActivity();
 
-    const onVisibility = () => {
-      if (document.visibilityState === 'visible') {
+    // Debounce timer for event-driven updates
+    let debounceTimer: NodeJS.Timeout | null = null;
+    const debouncedRefresh = () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
         fetchActivity();
         fetchStats();
+      }, 1000); // Wait 1 second before refreshing
+    };
+
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        debouncedRefresh();
       }
     };
     document.addEventListener('visibilitychange', onVisibility);
 
+    // Reduced polling frequency from 5s to 30s to prevent stuttering
     const interval = window.setInterval(() => {
+      fetchStats();
       fetchActivity();
     }, 30000);
 
-    // Listen to local notes REST change events
-    const onNotesChanged = () => {
-      fetchActivity();
-      fetchStats();
-    };
-    window.addEventListener('notes:changed', onNotesChanged as EventListener);
+    // Listen to local entity change events with debouncing
+    window.addEventListener('notes:changed', debouncedRefresh as EventListener);
+    window.addEventListener('tasks:changed', debouncedRefresh as EventListener);
+    window.addEventListener('chats:changed', debouncedRefresh as EventListener);
+    window.addEventListener('contacts:changed', debouncedRefresh as EventListener);
 
     return () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
       document.removeEventListener('visibilitychange', onVisibility);
       window.clearInterval(interval);
-      window.removeEventListener('notes:changed', onNotesChanged as EventListener);
+      window.removeEventListener('notes:changed', debouncedRefresh as EventListener);
+      window.removeEventListener('tasks:changed', debouncedRefresh as EventListener);
+      window.removeEventListener('chats:changed', debouncedRefresh as EventListener);
+      window.removeEventListener('contacts:changed', debouncedRefresh as EventListener);
     };
   }, [fetchStats, fetchActivity, user?.email]);
 
@@ -256,10 +269,20 @@ const Dashboard = () => {
 
   return (
     <div className="h-screen overflow-hidden flex flex-col">
-      <div className="flex-1 overflow-y-auto scrollbar-hide">
-        <div className="min-h-full gradient-mesh" aria-label="Dashboard">
+      <div className="flex-1 overflow-y-auto custom-scrollbar">
+        <div className="min-h-full relative" aria-label="Dashboard">
+          {/* Animated, dynamic mesh background */}
+          <div className="absolute inset-0 -z-10">
+            <div className="w-full h-full animate-gradient-mesh bg-gradient-to-br from-blue-400/30 via-purple-300/20 to-cyan-200/30 blur-2xl opacity-80" />
+            {/* Subtle floating shapes */}
+            <div className="absolute left-1/4 top-10 w-72 h-72 bg-pink-400/20 rounded-full blur-3xl animate-float-slow" />
+            <div className="absolute right-10 top-1/3 w-60 h-60 bg-cyan-400/20 rounded-full blur-2xl animate-float-medium" />
+            <div className="absolute left-10 bottom-10 w-52 h-52 bg-emerald-400/20 rounded-full blur-2xl animate-float-medium" />
+            <div className="absolute right-1/4 bottom-0 w-80 h-80 bg-yellow-300/20 rounded-full blur-3xl animate-float-slow" />
+            <div className="absolute inset-0 bg-grid-pattern opacity-10" />
+          </div>
           <div className="relative overflow-hidden bg-gradient-to-br from-primary/10 via-background to-accent/10 border-b border-border/50">
-            <div className="absolute inset-0 bg-grid-pattern opacity-5" />
+            <div className="absolute inset-0 bg-grid-pattern opacity-5 pointer-events-none" />
             <div className="relative p-8 space-y-6 animate-fade-in">
               <div className="flex items-start justify-between flex-wrap">
                 <div className="space-y-2">
@@ -299,7 +322,38 @@ const Dashboard = () => {
                 </div>
               </div>
 
-              {/* Stats Grid removed as requested */}
+              {/* Animated Stats Grid (refreshing look) */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-6 animate-fade-in">
+                {stats.map((stat, idx) => (
+                  <motion.div
+                    key={stat.label}
+                    initial={{ opacity: 0, y: 30 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: idx * 0.08, type: 'spring', stiffness: 120 }}
+                  >
+                    <Card
+                      className={`glass-card border-0 shadow-xl hover:scale-[1.03] transition-transform duration-200 bg-gradient-to-br ${stat.color} relative overflow-hidden`}
+                      style={{ minHeight: 120 }}
+                      aria-label={stat.label}
+                    >
+                      <div className="absolute right-2 top-2 opacity-10 text-white text-6xl pointer-events-none select-none">
+                        <stat.icon className="w-14 h-14" />
+                      </div>
+                      <CardContent className="relative z-10 flex flex-col gap-2 p-5">
+                        <div className="flex items-center gap-2">
+                          <stat.icon className="w-6 h-6 text-white drop-shadow-lg" />
+                          <span className="text-white text-lg font-semibold drop-shadow">{stat.label}</span>
+                        </div>
+                        <div className="text-3xl font-bold text-white drop-shadow-lg flex items-end gap-2">
+                          {stat.valueText}
+                          <span className="text-base font-medium text-white/70">{stat.change}</span>
+                        </div>
+                      </CardContent>
+                      <div className="absolute inset-0 bg-white/5 rounded-xl pointer-events-none" />
+                    </Card>
+                  </motion.div>
+                ))}
+              </div>
             </div>
           </div>
 
@@ -307,15 +361,18 @@ const Dashboard = () => {
           <div className="p-8 pb-20 space-y-8">
             {/* Analytics Section (compact) */}
             <SubscriptionGuard feature="analytics_reporting" requiredPlan="Professional">
-              <div className="mb-6">
-                <h2 className="text-xl font-semibold mb-3">Workspace Analytics</h2>
+              <div className="mb-2">
+                <div className="flex items-center gap-2 mb-1">
+                  <Sparkles className="w-4 h-4 text-primary" />
+                  <span className="text-base font-semibold">Workspace Analytics</span>
+                </div>
                 <AnalyticsChart
-                  title="User Activity Overview"
-                  labels={["Messages", "Video Calls", "Notes", "Tasks"]}
+                  title=""
+                  labels={["Messages", "Emails", "Notes", "Tasks"]}
                   data={stats.map(s => s.value)}
                   color="rgba(59,130,246,0.7)"
                   compact
-                  height={150}
+                  height={60}
                   type="line"
                 />
               </div>
@@ -326,7 +383,7 @@ const Dashboard = () => {
               {/* Left Column: Quick Actions above Recent Activity */}
               <div className="lg:col-span-2 space-y-6">
                 {/* Quick Actions */}
-                <Card className="glass-card border-border/60 hover-lift" aria-label="Quick Actions">
+                <Card className="glass-card border-border/60 hover-lift hover:shadow-2xl transition-all duration-300 group" aria-label="Quick Actions">
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2">
                       <Zap className="w-5 h-5 text-primary" />
@@ -336,22 +393,22 @@ const Dashboard = () => {
                   </CardHeader>
                   <CardContent className="space-y-3">
                     {[
-                      { to: '/video', icon: Video, label: 'Start Video Call', color: 'from-purple-500 to-pink-500' },
+                      { to: '/email', icon: Mail, label: 'Compose Email', color: 'from-purple-500 to-pink-500' },
                       { to: '/collab', icon: PenTool, label: 'Open Whiteboard', color: 'from-blue-500 to-cyan-500' },
                       { to: '/notes', icon: StickyNote, label: 'Create Note', color: 'from-green-500 to-emerald-500' },
                       { to: '/tasks', icon: ListTodo, label: 'Add Task', color: 'from-orange-500 to-red-500' },
                     ].map((action, index) => (
                       <Link key={action.label} to={action.to}>
                         <Button 
-                          className="w-full justify-start glass-card hover-lift group border-border/60" 
+                          className="w-full justify-start glass-card hover-lift hover:shadow-xl group border-border/60 transition-all duration-300 focus:scale-[1.03] active:scale-95"
                           variant="outline"
                           style={{ animationDelay: `${index * 50}ms` }}
                           aria-label={action.label}
                         >
-                          <div className={`p-1.5 rounded-lg bg-gradient-to-br ${action.color} mr-3 group-hover:scale-110 transition-transform`}>
-                            <action.icon className="w-4 h-4 text-white" />
+                          <div className={`p-1.5 rounded-lg bg-gradient-to-br ${action.color} mr-3 group-hover:scale-125 group-active:scale-95 transition-transform duration-300`}>
+                            <action.icon className="w-4 h-4 text-white drop-shadow" />
                           </div>
-                          {action.label}
+                          <span className="group-hover:text-primary transition-colors duration-200">{action.label}</span>
                         </Button>
                       </Link>
                     ))}
@@ -359,7 +416,7 @@ const Dashboard = () => {
                 </Card>
 
                 {/* Recent Activity */}
-                <Card className="glass-card border-border/60 self-start h-auto" aria-label="Recent Activity">
+                <Card className="glass-card border-border/60 self-start h-auto hover:shadow-2xl transition-all duration-300" aria-label="Recent Activity">
                   <CardHeader>
                     <div className="flex items-center justify-between">
                       <div>
@@ -401,7 +458,7 @@ const Dashboard = () => {
                         </div>
                       </div>
                     ) : (
-                      <div className="max-h-56 overflow-y-auto scrollbar-hide pr-2">
+                      <div className="max-h-56 overflow-y-auto custom-scrollbar pr-2">
                         {recentActivity.map((activity, index) => (
                           <div 
                             key={index}
@@ -447,7 +504,7 @@ const Dashboard = () => {
                   {/* Sidebar (Chat Summary + Team Status) */}
                 <div className="space-y-6">
                   {/* Chat Summary */}
-                  <Card className="glass-card border-border/60 hover-lift" aria-label="Chat Summary">
+                  <Card className="glass-card border-border/60 hover-lift hover:shadow-xl transition-all duration-300" aria-label="Chat Summary">
                     <CardHeader>
                       <CardTitle className="flex items-center gap-2">
                         <MessageSquare className="w-5 h-5 text-primary" />
@@ -501,7 +558,7 @@ const Dashboard = () => {
                     </CardContent>
                   </Card>
                   {/* Team Status (moved to sidebar) */}
-                  <Card className="glass-card border-border/60 hover-lift" aria-label="Team Status">
+                  <Card className="glass-card border-border/60 hover-lift hover:shadow-xl transition-all duration-300" aria-label="Team Status">
                     <CardHeader>
                       <CardTitle className="flex items-center gap-2">
                         <Users className="w-5 h-5 text-primary" />
@@ -525,7 +582,7 @@ const Dashboard = () => {
                           </Button>
                         </div>
                       ) : (
-                        <div className="max-h-64 overflow-y-auto scrollbar-hide pr-2">
+                        <div className="max-h-64 overflow-y-auto custom-scrollbar pr-2">
                           <ul className="space-y-3" aria-label="Team Members">
                             {teamStatus.map((member, idx) => (
                               <li key={member.id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/30 transition-colors">
@@ -555,7 +612,7 @@ const Dashboard = () => {
 
             {/* Manage Center (separate div) */}
             <div className="mt-6 mb-10">
-              <Card className="glass-card border-border/60 hover-lift" aria-label="Manage Center">
+              <Card className="glass-card border-border/60 hover-lift hover:shadow-2xl transition-all duration-300" aria-label="Manage Center">
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <Sparkles className="w-5 h-5 text-primary" />
@@ -643,6 +700,32 @@ const Dashboard = () => {
         }
         .scrollbar-hide::-webkit-scrollbar {
           display: none;
+        }
+        @keyframes gradient-mesh {
+          0%, 100% {
+            background-position: 0% 50%;
+          }
+          50% {
+            background-position: 100% 50%;
+          }
+        }
+        .animate-gradient-mesh {
+          animation: gradient-mesh 12s ease-in-out infinite alternate;
+          background-size: 200% 200%;
+        }
+        @keyframes float-slow {
+          0%, 100% { transform: translateY(0) scale(1); }
+          50% { transform: translateY(-24px) scale(1.04); }
+        }
+        .animate-float-slow {
+          animation: float-slow 10s ease-in-out infinite;
+        }
+        @keyframes float-medium {
+          0%, 100% { transform: translateY(0) scale(1); }
+          50% { transform: translateY(18px) scale(1.03); }
+        }
+        .animate-float-medium {
+          animation: float-medium 7s ease-in-out infinite;
         }
       `}</style>
     </div>

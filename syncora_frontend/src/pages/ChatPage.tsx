@@ -1123,9 +1123,9 @@ export default function ChatPage() {
 
   // ============ RENDER ============
   return (
-    <div className="flex h-full max-h-full bg-white dark:bg-gray-900 overflow-hidden">
+    <div className="flex h-full bg-white dark:bg-gray-900 overflow-hidden">
       {/* Sidebar */}
-      <div className="w-80 border-r border-gray-200 dark:border-gray-700 flex flex-col">
+      <div className="w-80 border-r border-gray-200 dark:border-gray-700 flex flex-col h-full">
         <div className="p-4 flex justify-between items-center">
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Chats</h1>
           <button
@@ -1177,9 +1177,9 @@ export default function ChatPage() {
 
       {/* Chat Area */}
       {activeChat ? (
-        <div className="flex-1 flex flex-col bg-gray-50 dark:bg-gray-950">
+        <div className="flex-1 flex flex-col bg-gray-50 dark:bg-gray-950 h-full overflow-hidden">
           {/* Header */}
-          <div className="h-14 px-6 flex items-center justify-between border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
+          <div className="h-14 px-6 flex items-center justify-between border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 flex-shrink-0">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center text-white font-bold flex-shrink-0">
                 {activeChat.name.charAt(0).toUpperCase()}
@@ -1223,7 +1223,7 @@ export default function ChatPage() {
           </div>
 
           {/* Messages */}
-          <div className="flex-1 overflow-y-auto p-4">
+          <div className="flex-1 overflow-y-auto p-4 min-h-0">
             {(searchResults || messages)?.map((msg, idx) => {
               const isSelf = msg.senderEmail === user?.email;
               const key = msg.id || msg._id || `${msg.roomId || 'unknown'}-${idx}`;
@@ -1266,7 +1266,7 @@ export default function ChatPage() {
           </div>
 
           {/* Input */}
-          <div className="flex items-center gap-2 p-4 bg-white dark:bg-gray-900 border-t">
+          <div className="flex items-center gap-2 p-4 bg-white dark:bg-gray-900 border-t flex-shrink-0">
             <FileUploadButton 
               onFileUploaded={(fileData) => {
                 // Send file as a message

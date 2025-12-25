@@ -98,7 +98,9 @@ export const FeatureButton: React.FC<FeatureButtonProps> = ({
       }
       return;
     }
-    props.onClick?.(e);
+    if (!feature || hasFeature(feature)) {
+      props.onClick?.(e);
+    }
   };
 
   const isLocked = feature && !hasFeature(feature);

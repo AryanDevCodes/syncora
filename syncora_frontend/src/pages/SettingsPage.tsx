@@ -134,13 +134,12 @@ const SettingsPage = () => {
     twoFactorAuth: false,
   });
 
-  // Check if settings have changed
+  // Check if settings  changed
   const hasChanges = useCallback(() => {
     if (!initialSettings) return false;
     return JSON.stringify(userSettings) !== JSON.stringify(initialSettings);
   }, [userSettings, initialSettings]);
 
-  // Fetch user data
   useEffect(() => {
     const fetchUserData = async () => {
       try {
@@ -188,7 +187,6 @@ const SettingsPage = () => {
     fetchUserData();
   }, [lastUpdate, toast]);
 
-  // Update subscription plan when subscription changes
   useEffect(() => {
     if (subscription?.plan?.name) {
       setUserSettings(prev => ({
@@ -198,12 +196,10 @@ const SettingsPage = () => {
     }
   }, [subscription]);
 
-  // Update single setting
   const updateSetting = useCallback((key: keyof UserSettings, value: any) => {
     setUserSettings(prev => ({ ...prev, [key]: value }));
   }, []);
 
-  // Save all settings
   const handleSaveSettings = async () => {
     try {
       setIsSaving(true);
@@ -215,17 +211,11 @@ const SettingsPage = () => {
         pushNotifications: userSettings.pushNotifications,
         chatNotifications: userSettings.chatNotifications,
         taskNotifications: userSettings.taskNotifications,
-        theme: userSettings.theme,
-        language: userSettings.language,
-        profileVisibility: userSettings.profileVisibility,
-        onlineStatus: userSettings.onlineStatus,
-        readReceipts: userSettings.readReceipts,
-        twoFactorAuth: userSettings.twoFactorAuth,
       });
-      
+
       setLastUpdate(Date.now());
       setInitialSettings(userSettings);
-      
+
       toast({
         title: 'Settings Saved',
         description: 'Your settings have been updated successfully',
@@ -432,7 +422,7 @@ const SettingsPage = () => {
       </div>
 
       <div className="relative z-10">
-        <div className="max-w-6xl mx-auto px-4 py-10 space-y-8">
+        <div className="max-w-screen-1xl mx-auto px-10 py-7 space-y-10">
           <div className="rounded-2xl border bg-white/80 shadow-lg backdrop-blur-md p-6">
             <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
               <div className="flex items-start gap-4">

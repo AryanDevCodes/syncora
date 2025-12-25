@@ -1,4 +1,7 @@
 ﻿import React, { useState, useEffect } from "react";
+import { useSubscription } from "@/contexts/SubscriptionContext";
+import { useState as useReactState } from "react";
+import "@/styles/custom-scrollbar.css";
 import Modal from "@/components/modals/Modal";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -8,12 +11,17 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { taskApi } from "@/api/taskApi";
 import { AnimatePresence, motion } from "framer-motion";
 import { CheckCircle, Clock, Calendar, Plus, Trash2, Edit, Search, Filter, ListTodo } from "lucide-react";
-import { useSubscription } from "@/contexts/SubscriptionContext";
 import { FeatureButton } from "@/components/subscription/SubscriptionGuard";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { useNavigate } from "react-router-dom";
 
 export default function TaskManager() {
+  const { refreshSubscription } = useSubscription();
+  const [showRefreshNotice, setShowRefreshNotice] = useReactState(false);
+  const navigate = useNavigate();
   const [deleteTaskId, setDeleteTaskId] = useState<string | null>(null);
   const [editTaskId, setEditTaskId] = useState<string | null>(null);
+  const [showUpgradeDialog, setShowUpgradeDialog] = useState(false);
   const [editForm, setEditForm] = useState({
     title: "",
     description: "",
@@ -30,14 +38,22 @@ export default function TaskManager() {
     priority: "MEDIUM",
     tags: ""
   });
+  const [formError, setFormError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState("ALL");
   const [filterPriority, setFilterPriority] = useState("ALL");
 
-  // Load tasks from backend
   useEffect(() => {
     fetchTasks();
-  }, []);
+    const handleSubUpdate = async () => {
+      await refreshSubscription();
+      await fetchTasks();
+    };
+    window.addEventListener('subscription-updated', handleSubUpdate);
+    return () => {
+      window.removeEventListener('subscription-updated', handleSubUpdate);
+    };
+  }, [refreshSubscription]);
 
   const fetchTasks = async () => {
     try {
@@ -46,6 +62,15 @@ export default function TaskManager() {
     } catch (err) {
       console.error("Error fetching tasks:", err);
     }
+  };
+
+  const isDueDateValid = (dueDate: string) => {
+    if (!dueDate) return true;
+    const due = new Date(dueDate);
+    const now = new Date();
+    due.setHours(0,0,0,0);
+    now.setHours(0,0,0,0);
+    return due >= now;
   };
 
   const toggleComplete = async (id, completed) => {
@@ -111,7 +136,7 @@ export default function TaskManager() {
     <>
       <div className="flex flex-col md:flex-row h-screen bg-gradient-to-br from-slate-50 to-blue-50 text-gray-900 overflow-hidden">
         {/* Main Section */}
-        <div className="flex-1 p-6 md:p-8 overflow-y-auto">
+        <div className="flex-1 p-6 md:p-8 overflow-y-auto custom-scrollbar">
           {/* Header */}
           <header className="flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
             <div>
@@ -138,7 +163,11 @@ export default function TaskManager() {
               
               <FeatureButton
                 feature="advanced_task_management"
-                onClick={() => setShowCreateDialog(true)}
+                onUpgradeClick={() => setShowUpgradeDialog(true)}
+                onClick={() => {
+                  setFormError(null);
+                  setShowCreateDialog(true);
+                }}
                 className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white px-5 py-2 h-10 rounded-lg flex items-center gap-2 shadow-md transition-all duration-200"
               >
                 <Plus size={20} /> Add Task
@@ -224,6 +253,12 @@ export default function TaskManager() {
             </select>
           </div>
 
+          {/* Show form error if any */}
+          {formError && (
+            <div className="mb-4 text-red-600 bg-red-100 border border-red-200 rounded-lg px-4 py-2">
+              {formError}
+            </div>
+          )}
           {/* Tasks List */}
           <motion.div
             layout
@@ -364,7 +399,7 @@ export default function TaskManager() {
         </div>
 
         {/* Scheduled Tasks Sidebar */}
-        <div className="w-full md:w-96 bg-white border-l border-gray-200 shadow-xl p-6 md:p-8 overflow-y-auto">
+        <div className="w-full md:w-96 bg-white border-l border-gray-200 shadow-xl p-6 md:p-8 overflow-y-auto custom-scrollbar">
           <div className="sticky top-0 bg-white pb-4">
             <h2 className="text-xl font-bold mb-4 flex items-center gap-2 text-gray-900">
               <Calendar className="text-blue-600" size={20} /> Upcoming Tasks
@@ -427,6 +462,11 @@ export default function TaskManager() {
           <form
             onSubmit={async (e) => {
               e.preventDefault();
+              setFormError(null);
+              if (!isDueDateValid(form.dueDate)) {
+                setFormError("Due date cannot be in the past.");
+                return;
+              }
               try {
                 await taskApi.createTask({
                   title: form.title,
@@ -536,6 +576,36 @@ export default function TaskManager() {
         </div>
       </Modal>
 
+      {/* Upgrade Modal (shown instead of redirect) */}
+      <Dialog open={showUpgradeDialog} onOpenChange={setShowUpgradeDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Upgrade required</DialogTitle>
+            <DialogDescription>
+              Adding tasks is part of the Advanced Task Management feature. Upgrade your plan to unlock it.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowUpgradeDialog(false)}>
+              Not now
+            </Button>
+            <Button
+              onClick={() => {
+                setShowUpgradeDialog(false);
+                setShowRefreshNotice(true);
+              }}
+            >
+              View plans
+            </Button>
+            {showRefreshNotice && (
+              <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded text-blue-800 text-sm">
+                Please refresh the page after upgrading your plan to unlock premium features.
+              </div>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Edit Task Modal */}
       <Modal open={!!editTaskId} onClose={() => setEditTaskId(null)}>
         <div className="p-6 w-full max-w-md">
@@ -546,6 +616,11 @@ export default function TaskManager() {
           <form
             onSubmit={async (e) => {
               e.preventDefault();
+              setFormError(null);
+              if (!isDueDateValid(editForm.dueDate)) {
+                setFormError("Due date cannot be in the past.");
+                return;
+              }
               try {
                 await taskApi.updateTask(editTaskId, {
                   title: editForm.title,

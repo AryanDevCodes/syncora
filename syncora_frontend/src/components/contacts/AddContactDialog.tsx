@@ -21,7 +21,7 @@ const AddContactDialog = ({ open, onOpenChange, formData, setFormData, onCreate 
         Add Contact
       </Button>
     </DialogTrigger>
-    <DialogContent className="sm:max-w-[500px] max-h-[80vh] overflow-y-auto">
+    <DialogContent className="sm:max-w-[500px] max-h-[80vh] overflow-y-auto custom-scrollbar">
       <DialogHeader>
         <DialogTitle>Add New Contact</DialogTitle>
       </DialogHeader>

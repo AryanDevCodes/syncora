@@ -1,55 +1,76 @@
+
 import React, { useState, useEffect } from 'react';
 import { Plus } from 'lucide-react';
 import { motion } from 'framer-motion';
 import NotesModal from '@/components/modals/notesModal';
 import { getConsistentBgColor } from '@/utils/colors';
+import { notesApi, NoteDTO } from '@/api/notesApi';
 
-interface Note {
-  id: string;
-  title: string;
-  content: string;
-  updatedAt: string;
-}
 
 const NotesPage: React.FC = () => {
-  const [notes, setNotes] = useState<Note[]>([]);
-  const [selectedNote, setSelectedNote] = useState<Note | null>(null);
+  const [notes, setNotes] = useState<NoteDTO[]>([]);
+  const [selectedNote, setSelectedNote] = useState<NoteDTO | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
 
-  // Fetch notes (mock)
+  // Fetch notes from backend
   useEffect(() => {
-    const stored = localStorage.getItem('notes');
-    if (stored) setNotes(JSON.parse(stored));
+    const fetchNotes = async () => {
+      setLoading(true);
+      try {
+        const backendNotes = await notesApi.getAllNotes();
+        setNotes(backendNotes);
+      } catch (e) {
+        setNotes([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchNotes();
+    // Listen for notes:changed events to refresh
+    const onNotesChanged = () => fetchNotes();
+    window.addEventListener('notes:changed', onNotesChanged);
+    return () => window.removeEventListener('notes:changed', onNotesChanged);
   }, []);
 
-  const persistNotes = (updated: Note[]) => {
-    setNotes(updated);
-    localStorage.setItem('notes', JSON.stringify(updated));
+  const handleAddNote = async (data: Partial<NoteDTO>) => {
+    try {
+      setLoading(true);
+      await notesApi.createNote({
+        title: data.title || '',
+        content: data.content || '',
+      });
+      // notes:changed event will trigger refresh
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleAddNote = (data: Partial<Note>) => {
-    const newNote: Note = {
-      id: Date.now().toString(),
-      title: data.title || '',
-      content: data.content || '',
-      updatedAt: new Date().toISOString(),
-    };
-    persistNotes([newNote, ...notes]);
+  const handleUpdateNote = async (data: Partial<NoteDTO>) => {
+    if (!data.id) return;
+    try {
+      setLoading(true);
+      await notesApi.updateNote(data.id, {
+        title: data.title,
+        content: data.content,
+      });
+      // notes:changed event will trigger refresh
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleUpdateNote = (data: Partial<Note>) => {
-    const updated = notes.map((n) =>
-      n.id === data.id ? { ...n, ...data, updatedAt: new Date().toISOString() } : n
-    );
-    persistNotes(updated);
+  const handleDeleteNote = async (id: string) => {
+    try {
+      setLoading(true);
+      await notesApi.deleteNote(id);
+      // notes:changed event will trigger refresh
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleDeleteNote = (id: string) => {
-    const updated = notes.filter((n) => n.id !== id);
-    persistNotes(updated);
-  };
-
-  const handleOpenModal = (note?: Note) => {
+  const handleOpenModal = (note?: NoteDTO) => {
     setSelectedNote(note || null);
     setModalOpen(true);
   };
@@ -70,7 +91,9 @@ const NotesPage: React.FC = () => {
       </div>
 
       {/* Notes Grid */}
-      {notes.length > 0 ? (
+      {loading ? (
+        <div className="flex items-center justify-center h-40 text-gray-500">Loading notes...</div>
+      ) : notes.length > 0 ? (
         <div className="grid gap-5 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
           {notes.map((note) => (
             <motion.div
@@ -112,12 +135,16 @@ const NotesPage: React.FC = () => {
         isOpen={modalOpen}
         onClose={() => setModalOpen(false)}
         note={selectedNote}
-        onSave={(data) => {
-          selectedNote ? handleUpdateNote(data) : handleAddNote(data);
+        onSave={async (data) => {
+          if (selectedNote) {
+            await handleUpdateNote({ ...selectedNote, ...data });
+          } else {
+            await handleAddNote(data);
+          }
           setModalOpen(false);
         }}
-        onDelete={(id) => {
-          handleDeleteNote(id);
+        onDelete={async (id) => {
+          await handleDeleteNote(id);
           setModalOpen(false);
         }}
       />
